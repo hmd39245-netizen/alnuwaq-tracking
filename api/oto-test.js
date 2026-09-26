@@ -1,15 +1,23 @@
 export default async function handler(req, res) {
   try {
+    const orderId = String(req.query.order || "").trim();
+
+    if (!orderId) {
+      return res.status(400).json({
+        ok: false,
+        error: "رقم الطلب مطلوب"
+      });
+    }
+
     const refreshToken = process.env.OTO_REFRESH_TOKEN;
 
     if (!refreshToken) {
       return res.status(500).json({
         ok: false,
-        error: "OTO_REFRESH_TOKEN غير موجود في Vercel"
+        error: "OTO_REFRESH_TOKEN غير موجود"
       });
     }
 
-    // 1) نجيب Access Token من OTO
     const tokenResponse = await fetch(
       "https://api.tryoto.com/rest/v2/refreshToken",
       {
@@ -30,40 +38,52 @@ export default async function handler(req, res) {
       tokenData.accessToken ||
       tokenData.token;
 
-    if (!tokenResponse.ok || !accessToken) {
+    if (!accessToken) {
       return res.status(500).json({
         ok: false,
-        step: "refreshToken",
-        otoResponse: tokenData
+        error: "تعذر الاتصال بـ OTO"
       });
     }
 
-    // 2) اختبار الاتصال بالحساب
-    const accountResponse = await fetch(
-      "https://api.tryoto.com/rest/v2/accountInfo",
+    const otoResponse = await fetch(
+      "https://api.tryoto.com/rest/v2/orderStatus",
       {
-        method: "GET",
+        method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json"
-        }
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          orderId
+        })
       }
     );
 
-    const accountData = await accountResponse.json();
+    const data = await otoResponse.json();
 
-    return res.status(accountResponse.ok ? 200 : 500).json({
-      ok: accountResponse.ok,
-      message: accountResponse.ok
-        ? "تم الاتصال بـ OTO بنجاح"
-        : "تم الحصول على التوكن لكن فشل اختبار الحساب",
-      account: accountData
+    if (!otoResponse.ok || data?.success === false) {
+      return res.status(404).json({
+        ok: false,
+        error: "الطلب غير موجود"
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      orderId,
+      status: data.status || "",
+      dcStatus: data.dcStatus || "",
+      deliveryCompany: data.deliveryCompany || "",
+      trackingNumber: data.dcTrackingNumber || "",
+      trackingUrl: data.trackingUrl || "",
+      shipmentId: data.shipmentId || "",
+      date: data.date || ""
     });
 
   } catch (error) {
     return res.status(500).json({
       ok: false,
-      error: error.message
+      error: "حدث خطأ في الاتصال"
     });
   }
 }
