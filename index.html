@@ -1146,6 +1146,513 @@ html, body, input, button, a, span, p, strong, h1, h2, h3, label, div{
 }
 </style>
 
+
+<style>
+/* ===== Mobile overflow hard fix ===== */
+html, body{
+  width:100% !important;
+  max-width:100% !important;
+  overflow-x:hidden !important;
+}
+
+*{
+  max-width:100%;
+}
+
+body{
+  min-width:0 !important;
+}
+
+header,
+main,
+.wrap,
+.header-inner,
+.hero,
+.input-card,
+.result,
+.result-body,
+.main-grid,
+.visual-card,
+.info-card,
+.scene,
+.compact-history{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+}
+
+.header-inner{
+  padding-left:10px !important;
+  padding-right:10px !important;
+}
+
+.header-actions{
+  min-width:0 !important;
+  flex-shrink:1 !important;
+}
+
+.store-back{
+  white-space:nowrap !important;
+  max-width:100% !important;
+}
+
+.hero h1,
+.hero p,
+.scene-title,
+.scene-caption,
+.status,
+.latest,
+.order-pill,
+.info-title,
+.detail span,
+.detail strong,
+.compact-history .status,
+.compact-history .time,
+.compact-history .desc{
+  overflow-wrap:anywhere !important;
+  word-break:break-word !important;
+}
+
+.input-row{
+  width:100% !important;
+  min-width:0 !important;
+}
+
+#orderInput{
+  width:100% !important;
+  min-width:0 !important;
+}
+
+#trackBtn{
+  flex:0 0 auto !important;
+}
+
+.details{
+  width:100% !important;
+}
+
+.detail{
+  min-width:0 !important;
+  width:100% !important;
+}
+
+.compact-history .line{
+  min-width:0 !important;
+  white-space:normal !important;
+  flex-wrap:wrap !important;
+}
+
+.compact-history .status,
+.compact-history .time,
+.compact-history .desc{
+  white-space:normal !important;
+}
+
+.scene-media{
+  max-width:none !important;
+}
+
+@media(max-width:760px){
+  .wrap{
+    padding-left:0 !important;
+    padding-right:0 !important;
+  }
+
+  main{
+    padding-left:8px !important;
+    padding-right:8px !important;
+  }
+
+  .header-inner{
+    width:100% !important;
+  }
+
+  .brand{
+    min-width:0 !important;
+    flex-shrink:1 !important;
+  }
+
+  .brand strong{
+    font-size:16px !important;
+    white-space:nowrap !important;
+  }
+
+  .store-back{
+    font-size:9px !important;
+    padding:7px 8px !important;
+  }
+
+  .hero{
+    padding:0 6px !important;
+  }
+
+  .hero h1{
+    font-size:27px !important;
+    line-height:1.3 !important;
+  }
+
+  .hero p{
+    font-size:11.5px !important;
+  }
+
+  .input-card{
+    width:100% !important;
+    padding:10px !important;
+    margin-top:22px !important;
+  }
+
+  .input-row{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) auto !important;
+    gap:6px !important;
+  }
+
+  #orderInput{
+    font-size:13px !important;
+    padding:0 9px !important;
+  }
+
+  #trackBtn{
+    min-width:72px !important;
+    padding:0 11px !important;
+    font-size:12px !important;
+  }
+
+  .result{
+    width:100% !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+  }
+
+  .result-head{
+    width:100% !important;
+    gap:8px !important;
+  }
+
+  .status{
+    font-size:18px !important;
+  }
+
+  .order-pill{
+    max-width:100% !important;
+    font-size:9px !important;
+  }
+
+  .progress{
+    overflow:hidden !important;
+    padding-left:5px !important;
+    padding-right:5px !important;
+  }
+
+  .timeline{
+    width:100% !important;
+    grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  }
+
+  .step{
+    min-width:0 !important;
+    font-size:8px !important;
+  }
+
+  .step strong{
+    font-size:8px !important;
+    line-height:1.35 !important;
+    overflow-wrap:anywhere !important;
+  }
+
+  .dot{
+    width:24px !important;
+    height:24px !important;
+    font-size:9px !important;
+  }
+
+  .step::after{
+    top:12px !important;
+  }
+
+  .result-body{
+    padding:7px !important;
+  }
+
+  .main-grid{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+  }
+
+  .visual-card,
+  .info-card{
+    width:100% !important;
+    min-width:0 !important;
+  }
+
+  .visual-card{
+    padding:8px !important;
+  }
+
+  .scene-title{
+    font-size:15px !important;
+  }
+
+  .scene-caption{
+    font-size:9.5px !important;
+  }
+
+  .info-card{
+    padding:9px !important;
+  }
+
+  .info-title{
+    font-size:12px !important;
+  }
+
+  .details{
+    display:grid !important;
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:6px !important;
+  }
+
+  .detail{
+    min-height:70px !important;
+    padding:8px !important;
+  }
+
+  .detail span{
+    font-size:8.5px !important;
+  }
+
+  .detail strong{
+    font-size:10px !important;
+    line-height:1.4 !important;
+  }
+
+  .help{
+    width:100% !important;
+  }
+
+  .help a{
+    width:100% !important;
+    text-align:center !important;
+  }
+
+  #shipmentHistory{
+    width:100% !important;
+    padding:7px 8px !important;
+  }
+
+  #shipmentHistory .head{
+    gap:6px !important;
+  }
+
+  #shipmentHistory .row{
+    align-items:flex-start !important;
+  }
+
+  #shipmentHistory .line{
+    display:flex !important;
+    flex-wrap:wrap !important;
+    gap:4px 6px !important;
+  }
+
+  #shipmentHistory .status{
+    font-size:9px !important;
+  }
+
+  #shipmentHistory .time{
+    font-size:8px !important;
+  }
+
+  #shipmentHistory .desc{
+    width:100% !important;
+    font-size:8.5px !important;
+  }
+
+  .new-search{
+    max-width:100% !important;
+  }
+}
+
+@media(max-width:420px){
+  main{
+    padding-left:6px !important;
+    padding-right:6px !important;
+  }
+
+  .details{
+    grid-template-columns:1fr 1fr !important;
+  }
+
+  .detail{
+    min-height:66px !important;
+  }
+
+  .brand img{
+    width:32px !important;
+    height:32px !important;
+  }
+
+  .brand strong{
+    font-size:15px !important;
+  }
+
+  .store-back{
+    font-size:8.5px !important;
+    padding:6px 7px !important;
+  }
+}
+</style>
+
+
+<style>
+/* ===== Desktop/tablet balance fix ===== */
+@media (min-width: 761px){
+
+  main{
+    padding-top:44px !important;
+  }
+
+  .wrap{
+    width:min(1120px, calc(100% - 40px)) !important;
+    margin:0 auto !important;
+  }
+
+  .hero{
+    max-width:760px !important;
+    margin:0 auto !important;
+  }
+
+  .hero h1{
+    font-size:48px !important;
+    line-height:1.2 !important;
+  }
+
+  .hero p{
+    font-size:14px !important;
+    max-width:620px !important;
+  }
+
+  .input-card{
+    width:min(760px,100%) !important;
+    max-width:760px !important;
+    margin:28px auto 0 !important;
+    padding:15px !important;
+  }
+
+  .input-row{
+    display:flex !important;
+    align-items:center !important;
+    gap:8px !important;
+    min-height:58px !important;
+  }
+
+  #orderInput{
+    flex:1 1 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+    height:46px !important;
+  }
+
+  #trackBtn{
+    flex:0 0 105px !important;
+    width:105px !important;
+    height:46px !important;
+    min-width:105px !important;
+  }
+
+  .result{
+    width:min(1040px,100%) !important;
+    max-width:1040px !important;
+    margin:30px auto 0 !important;
+  }
+
+  .result-body{
+    padding:16px !important;
+  }
+
+  .main-grid{
+    display:grid !important;
+    grid-template-columns:minmax(0,1.55fr) minmax(300px,.8fr) !important;
+    gap:14px !important;
+  }
+
+  .details{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+}
+
+/* Large screens: keep the whole page visually centered, not stretched */
+@media (min-width: 1200px){
+  .hero h1{
+    font-size:52px !important;
+  }
+
+  .input-card{
+    width:780px !important;
+    max-width:780px !important;
+  }
+
+  .result{
+    width:1080px !important;
+    max-width:1080px !important;
+  }
+}
+</style>
+
+
+<style>
+.search-card{
+  width:min(760px,100%) !important;
+  max-width:760px !important;
+  margin:28px auto 0 !important;
+  padding:14px !important;
+}
+.search-row{
+  display:flex !important;
+  align-items:center !important;
+  width:100% !important;
+  gap:8px !important;
+}
+#orderInput{
+  display:block !important;
+  flex:1 1 auto !important;
+  width:100% !important;
+  min-width:0 !important;
+  height:46px !important;
+  pointer-events:auto !important;
+  user-select:text !important;
+  cursor:text !important;
+}
+#trackBtn{
+  position:relative !important;
+  flex:0 0 100px !important;
+  width:100px !important;
+  height:46px !important;
+  cursor:pointer !important;
+}
+@media(max-width:760px){
+  .search-card{
+    width:100% !important;
+    margin-top:22px !important;
+    padding:10px !important;
+  }
+  .search-row{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) 78px !important;
+    gap:6px !important;
+  }
+  #orderInput{
+    height:42px !important;
+    font-size:13px !important;
+  }
+  #trackBtn{
+    width:78px !important;
+    min-width:78px !important;
+    height:42px !important;
+    font-size:12px !important;
+  }
+}
+</style>
+
 </head>
 <body>
 <header>
@@ -1162,16 +1669,17 @@ html, body, input, button, a, span, p, strong, h1, h2, h3, label, div{
     <section class="hero">
       <span class="badge">تتبع الطلب</span>
       <h1>تتبع طلبك من هنا</h1>
-      <p>أدخل رقم الطلب لمشاهدة حالته وآخر تحديث عليه.</p>
+      <p>أدخل رقم الطلب أو رقم التتبع لمشاهدة حالته وآخر تحديث عليه.</p>
     </section>
 
     <section class="search-card">
-      <label for="orderInput">رقم الطلب</label>
+      <label for="orderInput">رقم الطلب أو رقم التتبع</label>
       <div class="search-row">
-        <input id="orderInput" inputmode="numeric" placeholder="للتجربة اكتب رقم من 1 إلى 4">
+        <input id="orderInput" inputmode="numeric" autocomplete="off"
+               placeholder="اكتب رقم الطلب أو رقم التتبع">
         <button id="trackBtn" type="button">تتبع</button>
       </div>
-      <div class="hint">أدخل رقم الطلب كما هو ظاهر في فاتورتك أو رسالة تأكيد الطلب.</div>
+      <div class="hint">أدخل رقم الطلب أو رقم التتبع كما هو ظاهر في تفاصيل طلبك.</div>
       <div id="error" class="error"></div>
     </section>
 
