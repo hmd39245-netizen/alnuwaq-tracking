@@ -1821,9 +1821,7 @@ function presentation(data){
 
   // تم الشحن فعليًا
   if(
-    /تم الشحن|shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both) ||
-    data.trackingUrl ||
-    data.trackingNumber
+    /تم الشحن|shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both)
   ){
     const text = /arrived.?terminal/.test(both)
       ? "وصلت الشحنة إلى محطة أو فرع شركة الشحن وهي مستمرة في مسار التوصيل."
