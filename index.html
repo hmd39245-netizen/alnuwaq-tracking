@@ -1792,26 +1792,82 @@ function formatDate(value){
 }
 
 function presentation(data){
-  const both = (String(data.status||"") + " " + String(data.dcStatus||"")).toLowerCase();
+  const both = (
+    String(data.status || "") + " " +
+    String(data.dcStatus || "")
+  ).toLowerCase();
 
-  if(/delivered|complete|completed/.test(both))
-    return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
+  // تم التسليم
+  if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(both)){
+    return {
+      step:4,
+      scene:"delivered",
+      status:"تم التسليم",
+      title:"تم تسليم طلبك",
+      text:"تم تسجيل الطلب كمُسلّم بنجاح."
+    };
+  }
 
-  if(/out.?for.?delivery/.test(both))
-    return {step:3,scene:"shipped",status:"خرجت للتسليم",title:"شحنتك في الطريق إليك",text:"خرجت الشحنة للتسليم وهي في طريقها إليك."};
+  // خرج للتسليم / جاري التوصيل
+  if(/جاري التوصيل|خرجت للتسليم|out.?for.?delivery/.test(both)){
+    return {
+      step:3,
+      scene:"shipped",
+      status:"جاري التوصيل",
+      title:"شحنتك في الطريق إليك",
+      text:"خرجت الشحنة للتسليم وهي في طريقها إليك."
+    };
+  }
 
-  if(data.deliveryCompany || data.trackingUrl || data.trackingNumber ||
-     /shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both)){
+  // تم الشحن فعليًا
+  if(
+    /تم الشحن|shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both) ||
+    data.trackingUrl ||
+    data.trackingNumber
+  ){
     const text = /arrived.?terminal/.test(both)
       ? "وصلت الشحنة إلى محطة أو فرع شركة الشحن وهي مستمرة في مسار التوصيل."
       : "تم تسليم الطلب لشركة الشحن وهو مستمر في مسار التوصيل.";
-    return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text};
+
+    return {
+      step:3,
+      scene:"shipped",
+      status:"تم الشحن",
+      title:"شحنتك في الطريق",
+      text
+    };
   }
 
-  if(/processing|preparing|ready|created|pending|warehouse|packed|packing/.test(both))
-    return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
+  // جاري التجهيز
+  if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(both)){
+    return {
+      step:2,
+      scene:"preparing",
+      status:"جاري التجهيز",
+      title:"طلبك قيد التجهيز",
+      text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."
+    };
+  }
 
-  return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وبدأت مراجعته."};
+  // تحت المراجعة / انتظار المراجعة
+  if(/بانتظار المراجعة|انتظار المراجعة|تحت المراجعة|created|pending/.test(both)){
+    return {
+      step:1,
+      scene:"received",
+      status:"تم استلام الطلب",
+      title:"تم استلام طلبك",
+      text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."
+    };
+  }
+
+  // أي حالة غير معروفة
+  return {
+    step:1,
+    scene:"received",
+    status:"تم استلام الطلب",
+    title:"تم استلام طلبك",
+    text:"تم تسجيل طلبك بنجاح وبدأت مراجعته."
+  };
 }
 
 function historyLabel(status){
