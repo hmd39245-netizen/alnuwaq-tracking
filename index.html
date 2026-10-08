@@ -1792,12 +1792,40 @@ function formatDate(value){
 }
 
 function presentation(data){
-  const both = (
+  const sallaStatus = String(
+    data.sallaStatus || (data.source === "salla" ? data.status : "") || ""
+  ).trim().toLowerCase();
+
+  const otoStatus = (
     String(data.status || "") + " " +
     String(data.dcStatus || "")
-  ).toLowerCase();
+  ).trim().toLowerCase();
 
-  // تم التسليم
+  // الحالات المبكرة في سلة لها الأولوية دائمًا.
+  // طباعة بوليصة أو وجود حالة في OTO لا يعني أن الطلب شُحن فعليًا.
+  if(/بانتظار المراجعة|انتظار المراجعة|تحت المراجعة|قيد المراجعة|awaiting.?review|pending.?review|^pending$|^created$/.test(sallaStatus)){
+    return {
+      step:1,
+      scene:"received",
+      status:"تم استلام الطلب",
+      title:"تم استلام طلبك",
+      text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."
+    };
+  }
+
+  if(/جاري التجهيز|قيد التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(sallaStatus)){
+    return {
+      step:2,
+      scene:"preparing",
+      status:"جاري التجهيز",
+      title:"طلبك قيد التجهيز",
+      text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."
+    };
+  }
+
+  // بعد تجاوز المراحل المبكرة، نستفيد من حالة سلة و OTO معًا.
+  const both = (sallaStatus + " " + otoStatus).trim();
+
   if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(both)){
     return {
       step:4,
@@ -1808,7 +1836,6 @@ function presentation(data){
     };
   }
 
-  // خرج للتسليم / جاري التوصيل
   if(/جاري التوصيل|خرجت للتسليم|out.?for.?delivery/.test(both)){
     return {
       step:3,
@@ -1819,10 +1846,7 @@ function presentation(data){
     };
   }
 
-  // تم الشحن فعليًا
-  if(
-    /تم الشحن|shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both)
-  ){
+  if(/تم الشحن|شحن|shipped|transit|arrived.?terminal|terminal|pickup|picked|dispatch/.test(both)){
     const text = /arrived.?terminal/.test(both)
       ? "وصلت الشحنة إلى محطة أو فرع شركة الشحن وهي مستمرة في مسار التوصيل."
       : "تم تسليم الطلب لشركة الشحن وهو مستمر في مسار التوصيل.";
@@ -1836,8 +1860,8 @@ function presentation(data){
     };
   }
 
-  // جاري التجهيز
-  if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(both)){
+  // إذا لم ترسل سلة حالة واضحة، نتعامل مع الحالات العامة كمرحلة تجهيز.
+  if(/processing|preparing|ready|warehouse|packed|packing/.test(otoStatus)){
     return {
       step:2,
       scene:"preparing",
@@ -1847,18 +1871,6 @@ function presentation(data){
     };
   }
 
-  // تحت المراجعة / انتظار المراجعة
-  if(/بانتظار المراجعة|انتظار المراجعة|تحت المراجعة|created|pending/.test(both)){
-    return {
-      step:1,
-      scene:"received",
-      status:"تم استلام الطلب",
-      title:"تم استلام طلبك",
-      text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."
-    };
-  }
-
-  // أي حالة غير معروفة
   return {
     step:1,
     scene:"received",
