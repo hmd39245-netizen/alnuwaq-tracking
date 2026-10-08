@@ -1,3 +1,6 @@
+const SALLA_TRACKING_URL =
+  "https://script.google.com/macros/s/AKfycbwtcuRqFEGX3rJ1o0yN_T2i8V51le5U4aJte5xnvfNAQILRtyqvNVojT4YMDop-hDr_/exec";
+
 export default async function handler(req, res) {
   try {
     const orderId = String(req.query.order || "").trim();
@@ -9,160 +12,220 @@ export default async function handler(req, res) {
       });
     }
 
+    // 1) نبحث أولاً في بيانات سلة الموجودة في Google Sheets
+    const sallaOrder = await getSallaOrder(orderId);
+
+    // 2) إذا شركة الشحن هي الصاعدي، ما نحتاج OTO
+    if (sallaOrder && isSaeedi(sallaOrder.shippingCompany)) {
+      return res.status(200).json({
+        ok: true,
+        source: "salla",
+        orderId,
+
+        status: sallaOrder.status || "",
+        dcStatus: "",
+
+        deliveryCompany: "الصاعدي",
+
+        trackingNumber: "",
+        trackingUrl: "",
+        shipmentId: "",
+
+        date: sallaOrder.date || "",
+
+        packageCount: null,
+
+        specialMessage:
+          "تم شحن طلبك بنجاح. تم شحن طلبك وتسليمه لشركة الصاعدي للشحن. مدة التوصيل من يوم إلى 3 أيام عمل. للاستفسار: شركة الصاعدي 0566276686",
+
+        carrierLocation:
+          "https://maps.app.goo.gl/NNJ3VgvtCKpaJKkcA",
+
+        history: []
+      });
+    }
+
+    // 3) نجرب OTO
     const refreshToken = process.env.OTO_REFRESH_TOKEN;
 
-    if (!refreshToken) {
-      return res.status(500).json({
-        ok: false,
-        error: "تعذر الاتصال بخدمة التتبع"
-      });
-    }
-
-    // جلب Access Token من OTO
-    const tokenResponse = await fetch(
-      "https://api.tryoto.com/rest/v2/refreshToken",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        body: JSON.stringify({
-          refresh_token: refreshToken
-        })
-      }
-    );
-
-    const tokenData = await safeJson(tokenResponse);
-
-    const accessToken =
-      tokenData?.access_token ||
-      tokenData?.accessToken ||
-      tokenData?.token;
-
-    if (!tokenResponse.ok || !accessToken) {
-      return res.status(502).json({
-        ok: false,
-        error: "تعذر الاتصال بخدمة التتبع"
-      });
-    }
-
-    const headers = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Authorization: `Bearer ${accessToken}`
-    };
-
-    // الحالة الأساسية
-    const statusResponse = await fetch(
-      "https://api.tryoto.com/rest/v2/orderStatus",
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          orderId
-        })
-      }
-    );
-
-    const statusData = await safeJson(statusResponse);
-
-    if (!statusResponse.ok || statusData?.success === false) {
-      return res.status(404).json({
-        ok: false,
-        error: "الطلب غير موجود"
-      });
-    }
-
-    // محاولة جلب تفاصيل إضافية
-    let detailsData = {};
-    try {
-      const detailsResponse = await fetch(
-        `https://api.tryoto.com/rest/v2/orderDetails?orderId=${encodeURIComponent(orderId)}`,
-        {
-          method: "GET",
-          headers
-        }
-      );
-
-      detailsData = await safeJson(detailsResponse);
-    } catch {}
-
-    // محاولة جلب سجل التحديثات
-    let historyData = {};
-    try {
-      const historyResponse = await fetch(
-        "https://api.tryoto.com/rest/v2/orderHistory",
+    if (refreshToken) {
+      const tokenResponse = await fetch(
+        "https://api.tryoto.com/rest/v2/refreshToken",
         {
           method: "POST",
-          headers,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
           body: JSON.stringify({
-            orderIds: [orderId]
+            refresh_token: refreshToken
           })
         }
       );
 
-      historyData = await safeJson(historyResponse);
-    } catch {}
+      const tokenData = await safeJson(tokenResponse);
 
-    const packageCount =
-      findNumericField(detailsData, "packageCount") ??
-      findNumericField(statusData, "packageCount") ??
-      null;
+      const accessToken =
+        tokenData?.access_token ||
+        tokenData?.accessToken ||
+        tokenData?.token;
 
-    return res.status(200).json({
-      ok: true,
+      if (tokenResponse.ok && accessToken) {
+        const headers = {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`
+        };
 
-      orderId,
+        const statusResponse = await fetch(
+          "https://api.tryoto.com/rest/v2/orderStatus",
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              orderId
+            })
+          }
+        );
 
-      status:
-        firstValue(statusData, [
-          "status",
-          "orderStatus"
-        ]) || "",
+        const statusData = await safeJson(statusResponse);
 
-      dcStatus:
-        firstValue(statusData, [
-          "dcStatus",
-          "deliveryCompanyStatus"
-        ]) || "",
+        // إذا OTO لقى الطلب
+        if (
+          statusResponse.ok &&
+          statusData?.success !== false
+        ) {
+          let detailsData = {};
+          let historyData = {};
 
-      deliveryCompany:
-        firstValue(statusData, [
-          "deliveryCompany",
-          "deliveryCompanyName",
-          "carrier"
-        ]) || "",
+          try {
+            const detailsResponse = await fetch(
+              `https://api.tryoto.com/rest/v2/orderDetails?orderId=${encodeURIComponent(orderId)}`,
+              {
+                method: "GET",
+                headers
+              }
+            );
 
-      trackingNumber:
-        firstValue(statusData, [
-          "dcTrackingNumber",
-          "trackingNumber"
-        ]) || "",
+            detailsData = await safeJson(detailsResponse);
+          } catch {}
 
-      trackingUrl:
-        firstValue(statusData, [
-          "trackingUrl",
-          "trackingURL"
-        ]) || "",
+          try {
+            const historyResponse = await fetch(
+              "https://api.tryoto.com/rest/v2/orderHistory",
+              {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  orderIds: [orderId]
+                })
+              }
+            );
 
-      shipmentId:
-        firstValue(statusData, [
-          "shipmentId",
-          "awbNumber"
-        ]) || "",
+            historyData = await safeJson(historyResponse);
+          } catch {}
 
-      date:
-        firstValue(statusData, [
-          "date",
-          "updatedAt",
-          "updateDate",
-          "timestamp"
-        ]) || "",
+          const packageCount =
+            findNumericField(detailsData, "packageCount") ??
+            findNumericField(statusData, "packageCount") ??
+            null;
 
-      packageCount,
+          return res.status(200).json({
+            ok: true,
+            source: "oto",
 
-      history: normalizeHistory(historyData)
+            orderId,
+
+            status:
+              firstValue(statusData, [
+                "status",
+                "orderStatus"
+              ]) ||
+              sallaOrder?.status ||
+              "",
+
+            dcStatus:
+              firstValue(statusData, [
+                "dcStatus",
+                "deliveryCompanyStatus"
+              ]) || "",
+
+            deliveryCompany:
+              firstValue(statusData, [
+                "deliveryCompany",
+                "deliveryCompanyName",
+                "carrier"
+              ]) ||
+              sallaOrder?.shippingCompany ||
+              "",
+
+            trackingNumber:
+              firstValue(statusData, [
+                "dcTrackingNumber",
+                "trackingNumber"
+              ]) || "",
+
+            trackingUrl:
+              firstValue(statusData, [
+                "trackingUrl",
+                "trackingURL"
+              ]) || "",
+
+            shipmentId:
+              firstValue(statusData, [
+                "shipmentId",
+                "awbNumber"
+              ]) || "",
+
+            date:
+              firstValue(statusData, [
+                "date",
+                "updatedAt",
+                "updateDate",
+                "timestamp"
+              ]) ||
+              sallaOrder?.date ||
+              "",
+
+            packageCount,
+
+            history: normalizeHistory(historyData)
+          });
+        }
+      }
+    }
+
+    // 4) إذا OTO ما لقى الطلب لكن الطلب موجود في سلة
+    // هذا مهم للطلبات الجديدة قبل إنشاء البوليصة
+    if (sallaOrder) {
+      return res.status(200).json({
+        ok: true,
+        source: "salla",
+
+        orderId,
+
+        status: sallaOrder.status || "",
+        dcStatus: "",
+
+        deliveryCompany:
+          sallaOrder.shippingCompany || "",
+
+        trackingNumber: "",
+        trackingUrl: "",
+        shipmentId: "",
+
+        date: sallaOrder.date || "",
+
+        packageCount: null,
+
+        history: []
+      });
+    }
+
+    // 5) غير موجود لا في سلة ولا OTO
+    return res.status(404).json({
+      ok: false,
+      error: "الطلب غير موجود"
     });
 
   } catch (error) {
@@ -171,6 +234,59 @@ export default async function handler(req, res) {
       error: "حدث خطأ في الاتصال"
     });
   }
+}
+
+
+async function getSallaOrder(orderId) {
+  try {
+    const url =
+      `${SALLA_TRACKING_URL}?order=${encodeURIComponent(orderId)}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "follow"
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await safeJson(response);
+
+    if (!data?.ok || !data?.order) {
+      return null;
+    }
+
+    return {
+      orderNumber:
+        String(data.order.orderNumber || "").trim(),
+
+      status:
+        String(data.order.status || "").trim(),
+
+      date:
+        String(data.order.date || "").trim(),
+
+      shippingCompany:
+        String(data.order.shippingCompany || "").trim()
+    };
+  } catch {
+    return null;
+  }
+}
+
+
+function isSaeedi(company) {
+  const value = String(company || "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    value.includes("الصاعدي") ||
+    value.includes("alsaedi") ||
+    value.includes("al saeedi") ||
+    value.includes("al-saeedi")
+  );
 }
 
 
@@ -342,7 +458,6 @@ function collectArrays(value, output) {
     const [key, child]
     of Object.entries(value)
   ) {
-
     if (
       Array.isArray(child) &&
       /history|status|events|actions/i.test(key)
