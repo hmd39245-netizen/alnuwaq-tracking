@@ -1823,33 +1823,49 @@ function formatDate(value){
 }
 
 function presentation(data){
-  const both = (
+  // سلة هي المصدر الرئيسي لحالة الطلب.
+  // OTO يستخدم فقط لتفاصيل الشحن بعد دخول الطلب مرحلة الشحن.
+  const salla = String(data.sallaStatus || "").toLowerCase().replace(/\s+/g," ").trim();
+  const oto = (
     String(data.status || "") + " " +
     String(data.dcStatus || "")
   ).toLowerCase().replace(/\s+/g," ").trim();
 
-  // حالات المراجعة أولًا: لا يجوز اعتبارها شحن حتى لو كانت البوليصة أو شركة الشحن موجودة.
-  if(/بانتظار المراجعة|انتظار المراجعة|تحت المراجعة|قيد المراجعة|pending|created/.test(both)){
+  // إذا كانت حالة سلة موجودة نعتمدها أولًا دائمًا.
+  if(salla){
+    if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(salla)){
+      return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
+    }
+
+    if(/جاري التوصيل|خرجت للتسليم|تم الشحن|shipped|out.?for.?delivery|in.?transit|transit/.test(salla)){
+      return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text:"تم تسليم طلبك لشركة الشحن وهو مستمر في مسار التوصيل."};
+    }
+
+    if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(salla)){
+      return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
+    }
+
+    // أي حالة مبكرة في سلة، ومنها بانتظار/تحت المراجعة، تبقى في الخطوة الأولى.
     return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."};
   }
 
-  if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(both)){
+  // للطلبات القديمة غير الموجودة في سلة نرجع لمنطق OTO.
+  if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(oto)){
     return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
   }
 
-  if(/جاري التوصيل|خرجت للتسليم|out.?for.?delivery/.test(both)){
+  if(/جاري التوصيل|خرجت للتسليم|out.?for.?delivery/.test(oto)){
     return {step:3,scene:"shipped",status:"جاري التوصيل",title:"شحنتك في الطريق إليك",text:"خرجت الشحنة للتسليم وهي في طريقها إليك."};
   }
 
-  // الشحن يعتمد على الحالة الفعلية فقط، وليس وجود شركة/بوليصة/رقم تتبع.
-  if(/تم الشحن|shipped|in.?transit|transit|arrived.?terminal|arrived.?hub|picked.?up|pickup|collected|received.?by.?carrier|carrier.?received|accepted.?by.?carrier|dispatch/.test(both)){
-    const text = /arrived.?terminal|arrived.?hub/.test(both)
+  if(/تم الشحن|shipped|in.?transit|transit|arrived.?terminal|arrived.?hub|picked.?up|pickup|collected|received.?by.?carrier|carrier.?received|accepted.?by.?carrier|dispatch/.test(oto)){
+    const text = /arrived.?terminal|arrived.?hub/.test(oto)
       ? "وصلت الشحنة إلى محطة أو فرع شركة الشحن وهي مستمرة في مسار التوصيل."
       : "تم استلام الشحنة من شركة الشحن وهي مستمرة في مسار التوصيل.";
     return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text};
   }
 
-  if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(both)){
+  if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(oto)){
     return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
   }
 
@@ -1901,13 +1917,17 @@ function isCarrierHistoryEvent(item){
   return realCarrierEvent.test(status) || realCarrierEvent.test(desc);
 }
 
-function renderHistory(items){
-  // لا ننشئ خانة التحديثات أصلًا قبل وجود حركة حقيقية من شركة الشحن.
+function renderHistory(items, allowHistory){
+  // لا ننشئ خانة التحديثات قبل أن تؤكد سلة أن الطلب دخل مرحلة الشحن.
+  let box = document.getElementById("shipmentHistory");
+  if(!allowHistory){
+    if(box) box.remove();
+    return;
+  }
+
   const list = Array.isArray(items)
     ? items.filter(isCarrierHistoryEvent).slice(0,6)
     : [];
-
-  let box = document.getElementById("shipmentHistory");
 
   if(!list.length){
     if(box) box.remove();
@@ -1981,7 +2001,7 @@ function render(orderId, data){
     latest.textContent = data.date ? "آخر تحديث: " + formatDate(data.date) : "آخر تحديث";
   }
 
-  renderHistory(data.history);
+  renderHistory(data.history, p.step >= 3 && !/الصاعدي|saeedi|alsaedi|al.?saeedi/i.test(String(data.deliveryCompany || data.sallaShippingCompany || "")));
   errorBox.classList.remove("show");
   result.classList.add("show");
   setTimeout(() => result.scrollIntoView({behavior:"smooth",block:"start"}),60);
