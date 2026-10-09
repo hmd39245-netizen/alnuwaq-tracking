@@ -1892,7 +1892,10 @@ function render(orderId, data){
   const p = presentation(data);
 
   document.getElementById("statusText").textContent = p.status;
-  document.getElementById("orderNo").textContent = "رقم الطلب #" + (data.orderId || orderId);
+  document.getElementById("orderNo").textContent =
+    data.inputType === "tracking"
+      ? "رقم التتبع #" + (data.trackingNumber || orderId)
+      : "رقم الطلب #" + (data.orderId || orderId);
   document.getElementById("detailStatus").textContent = p.status;
   document.getElementById("carrier").textContent = data.deliveryCompany || "—";
   document.getElementById("trackingNumber").textContent = data.trackingNumber || data.shipmentId || "—";
@@ -1939,7 +1942,7 @@ async function track(){
 
   if(!orderId){
     result.classList.remove("show");
-    errorBox.textContent = "اكتب رقم الطلب أولًا.";
+    errorBox.textContent = "اكتب رقم الطلب أو رقم التتبع أولًا.";
     errorBox.classList.add("show");
     input.focus();
     return;
