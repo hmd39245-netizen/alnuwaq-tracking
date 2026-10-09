@@ -1871,19 +1871,35 @@ function removeSaeediActions(){
 function renderSaeedi(data){
   removeSaeediActions();
 
-  if(!data.isSaeedi || Number(data.stage) < 3 || !data.specialMessage){
+  const company = String(data.deliveryCompany || "").toLowerCase();
+  const saeediDetected =
+    data.isSaeedi === true ||
+    company.includes("الصاعدي") ||
+    company.includes("saeedi") ||
+    company.includes("alsaedi") ||
+    company.includes("al-saeedi") ||
+    company.includes("al saeedi");
+
+  if(!saeediDetected || Number(data.stage) < 3){
     return false;
   }
 
+  const message =
+    String(data.specialMessage || "").trim() ||
+    "تم شحن طلبك مع الصاعدي، والتوصيل خلال 3 أيام عمل كحد أقصى.";
+
   document.getElementById("updateTitle").textContent = "شركة الصاعدي للشحن";
-  document.getElementById("updateText").textContent = data.specialMessage;
+  document.getElementById("updateText").textContent = message;
 
   const updateBox = document.querySelector(".update");
-  updateBox.insertAdjacentHTML("afterend", `
-    <div id="saeediActions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px">
-      <a href="tel:${escapeHtml(data.carrierPhone || "0566276686")}" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">اتصال بالصاعدي</a>
-      <a href="${escapeHtml(data.carrierLocation || "#")}" target="_blank" rel="noopener" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">موقع الصاعدي</a>
-    </div>`);
+
+  if(updateBox){
+    updateBox.insertAdjacentHTML("afterend", `
+      <div id="saeediActions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px">
+        <a href="tel:${escapeHtml(data.carrierPhone || "0566276686")}" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">اتصال بالصاعدي</a>
+        <a href="${escapeHtml(data.carrierLocation || "https://maps.app.goo.gl/NNJ3VgvtCKpaJKkcA")}" target="_blank" rel="noopener" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">موقع الصاعدي</a>
+      </div>`);
+  }
 
   return true;
 }
