@@ -1728,6 +1728,8 @@ main,
               <p id="updateText">—</p>
             </div>
 
+            <div id="saeediMessage" style="display:none;margin-top:9px;padding:11px 12px;border-radius:10px;background:rgba(111,78,55,.14);border:1px solid rgba(248,227,190,.13);color:#f8e3be;font-size:11px;line-height:1.8;font-weight:700"></div>
+
             <a id="trackingLink" class="tracking-link" href="#" target="_blank" rel="noopener">تتبع الشحنة لدى شركة الشحن</a>
 
             <div class="help">
@@ -1871,6 +1873,12 @@ function removeSaeediActions(){
 function renderSaeedi(data){
   removeSaeediActions();
 
+  const messageBox = document.getElementById("saeediMessage");
+  if(messageBox){
+    messageBox.style.display = "none";
+    messageBox.textContent = "";
+  }
+
   const company = String(data.deliveryCompany || "").toLowerCase();
   const saeediDetected =
     data.isSaeedi === true ||
@@ -1888,8 +1896,10 @@ function renderSaeedi(data){
     String(data.specialMessage || "").trim() ||
     "تم شحن طلبك مع الصاعدي، والتوصيل خلال 3 أيام عمل كحد أقصى.";
 
-  document.getElementById("updateTitle").textContent = "شركة الصاعدي للشحن";
-  document.getElementById("updateText").textContent = message;
+  if(messageBox){
+    messageBox.textContent = message;
+    messageBox.style.display = "block";
+  }
 
   const updateBox = document.querySelector(".update");
 
@@ -1964,6 +1974,14 @@ async function track(){
     return;
   }
 
+  if(!/^\d{6,30}$/.test(orderId)){
+    result.classList.remove("show");
+    errorBox.textContent = "الطلب أو رقم التتبع غير موجود";
+    errorBox.classList.add("show");
+    input.focus();
+    return;
+  }
+
   errorBox.classList.remove("show");
   trackBtn.disabled = true;
   const original = trackBtn.textContent;
@@ -2004,6 +2022,11 @@ document.getElementById("newSearch").addEventListener("click", () => {
   result.classList.remove("show");
   errorBox.classList.remove("show");
   removeSaeediActions();
+  const saeediMessage = document.getElementById("saeediMessage");
+  if(saeediMessage){
+    saeediMessage.style.display = "none";
+    saeediMessage.textContent = "";
+  }
   const history = document.getElementById("shipmentHistory");
   if(history) history.style.display = "none";
   if(searchCard) searchCard.style.display = "block";
