@@ -1653,27 +1653,6 @@ main,
 }
 </style>
 
-
-<style>
-.saeedi-note{
-  display:none;
-  margin-top:9px;
-  padding:11px 12px;
-  border-radius:10px;
-  background:rgba(111,78,55,.14);
-  border:1px solid rgba(248,227,190,.14);
-}
-.saeedi-note strong{display:block;font-size:12px;color:#f8e3be;margin-bottom:4px}
-.saeedi-note p{margin:0;color:#d7deea;font-size:10.5px;line-height:1.7}
-.saeedi-actions{display:flex;gap:7px;margin-top:9px}
-.saeedi-actions a{
-  flex:1;display:flex;align-items:center;justify-content:center;
-  text-decoration:none;color:#fff;font-size:10.5px;font-weight:700;
-  padding:9px 8px;border-radius:9px;
-  background:linear-gradient(180deg,#78543a,#67452f);
-  border:1px solid rgba(255,255,255,.08);
-}
-</style>
 </head>
 <body>
 <header>
@@ -1693,7 +1672,7 @@ main,
       <p>أدخل رقم الطلب أو رقم التتبع لمشاهدة حالته وآخر تحديث عليه.</p>
     </section>
 
-    <section class="search-card">
+    <section id="searchCard" class="search-card">
       <label for="orderInput">رقم الطلب أو رقم التتبع</label>
       <div class="search-row">
         <input id="orderInput" inputmode="numeric" autocomplete="off"
@@ -1749,16 +1728,6 @@ main,
               <p id="updateText">—</p>
             </div>
 
-
-            <div id="saeediNote" class="saeedi-note">
-              <strong>شركة الصاعدي</strong>
-              <p>تم شحن طلبك مع الصاعدي، والتوصيل خلال 3 أيام عمل كحد أقصى.</p>
-              <div class="saeedi-actions">
-                <a href="tel:0566276686">اتصال بالصاعدي</a>
-                <a href="https://maps.app.goo.gl/NNJ3VgvtCKpaJKkcA" target="_blank" rel="noopener">موقع الصاعدي</a>
-              </div>
-            </div>
-
             <a id="trackingLink" class="tracking-link" href="#" target="_blank" rel="noopener">تتبع الشحنة لدى شركة الشحن</a>
 
             <div class="help">
@@ -1780,6 +1749,7 @@ const input = document.getElementById("orderInput");
 const result = document.getElementById("result");
 const errorBox = document.getElementById("error");
 const trackBtn = document.getElementById("trackBtn");
+const searchCard = document.getElementById("searchCard");
 
 function norm(v){
   return String(v || "").trim()
@@ -1788,13 +1758,14 @@ function norm(v){
 }
 
 function setSteps(n){
+  const step = Math.max(1, Math.min(4, Number(n) || 1));
   for(let i=1;i<=4;i++){
     const el = document.getElementById("step"+i);
     el.className = "step";
     el.querySelector(".dot").textContent = i;
-    if(i <= n) el.classList.add("done");
-    if(i === n) el.classList.add("active");
-    if(i < n) el.querySelector(".dot").textContent = "✓";
+    if(i <= step) el.classList.add("done");
+    if(i === step) el.classList.add("active");
+    if(i < step) el.querySelector(".dot").textContent = "✓";
   }
 }
 
@@ -1822,43 +1793,6 @@ function formatDate(value){
   }).format(d);
 }
 
-function presentation(data){
-  // المنطق النهائي للحالة يأتي من API نفسه.
-  if(Number(data.stage) >= 1 && Number(data.stage) <= 4 && data.displayStatus){
-    return {
-      step:Number(data.stage),
-      scene:data.scene || (Number(data.stage)===4 ? "delivered" : Number(data.stage)===3 ? "shipped" : Number(data.stage)===2 ? "preparing" : "received"),
-      status:data.displayStatus,
-      title:data.sceneTitle || data.displayStatus,
-      text:data.sceneText || ""
-    };
-  }
-
-  // احتياط للنسخ القديمة من API فقط.
-  const both = (String(data.status||"") + " " + String(data.dcStatus||"")).toLowerCase();
-  if(/delivered|complete|completed/.test(both))
-    return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
-  if(/out.?for.?delivery|shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both))
-    return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text:"تم تسليم الطلب لشركة الشحن وهو مستمر في مسار التوصيل."};
-  if(/processing|preparing|ready|warehouse|packed|packing/.test(both))
-    return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
-  return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."};
-}
-
-function historyLabel(status){
-  const s = String(status || "").toLowerCase();
-  if(/delivered/.test(s)) return "تم تسليم الشحنة";
-  if(/out.?for.?delivery/.test(s)) return "خرجت الشحنة للتسليم";
-  if(/arrived.?terminal/.test(s)) return "وصلت إلى محطة شركة الشحن";
-  if(/picked.?up|pickup/.test(s)) return "استلمت شركة الشحن الشحنة";
-  if(/shipped|dispatch|transit/.test(s)) return "الشحنة في الطريق";
-  if(/processing|preparing|packing|packed/.test(s)) return "جاري تجهيز الطلب";
-  if(/created|pending/.test(s)) return "تم إنشاء الطلب";
-  if(/cancel/.test(s)) return "تم إلغاء الطلب";
-  if(/return/.test(s)) return "الشحنة مرتجعة";
-  return status || "تحديث على الشحنة";
-}
-
 function escapeHtml(v){
   return String(v ?? "")
     .replaceAll("&","&amp;")
@@ -1868,42 +1802,37 @@ function escapeHtml(v){
     .replaceAll("'","&#039;");
 }
 
-function isCarrierHistoryEvent(item){
-  const status = (
-    String(item?.status || "") + " " +
-    String(item?.dcStatus || "") + " " +
-    String(item?.code || "")
-  ).toLowerCase().replace(/\s+/g," ").trim();
+// الواجهة لا تستنتج الحالة من OTO أو اسم شركة الشحن.
+// الـ API هو المصدر الوحيد للمرحلة النهائية.
+function presentation(data){
+  const step = Math.max(1, Math.min(4, Number(data.stage) || 1));
 
-  const desc = (
-    String(item?.description || "") + " " +
-    String(item?.note || "")
-  ).toLowerCase().replace(/\s+/g," ").trim();
-
-  // أحداث إدارية داخل OTO لا تخص حركة الشحنة لدى شركة الشحن.
-  const adminEvent = /updated?|update|created|edited|changed|location|address|sender|warehouse|processing|preparing|ready|packing|packed|موقع الإرسال|موقع الارسال|تحديث موقع|تحديث.*العنوان|تعديل.*العنوان|العنوان|بيانات المرسل|المرسل|تم تحديث|تم تعديل/;
-  if(adminEvent.test(status) || adminEvent.test(desc)) return false;
-
-  // نعتمد فقط أحداث النقل الفعلية بعد استلام شركة الشحن للشحنة.
-  const realCarrierEvent = /picked.?up|shipment.?picked|collected|received.?by.?carrier|carrier.?received|accepted.?by.?carrier|arrived.?terminal|arrived.?hub|in.?transit|transit|departed|out.?for.?delivery|delivery.?attempt|delivered|returned|return.?to.?sender|استلمت.*شركة.*الشحن|استلام.*شركة.*الشحن|استلم.*الناقل|تم.*استلام.*الشحنة|وصلت.*محطة|وصلت.*الفرع|غادرت.*المحطة|في.*الطريق|جاري.*التوصيل|خرجت.*للتسليم|تم.*التسليم/;
-
-  return realCarrierEvent.test(status) || realCarrierEvent.test(desc);
+  return {
+    step,
+    scene: data.scene || (step === 4 ? "delivered" : step === 3 ? "shipped" : step === 2 ? "preparing" : "received"),
+    status: data.displayStatus || (step === 4 ? "تم التسليم" : step === 3 ? "تم الشحن" : step === 2 ? "جاري التجهيز" : "تم استلام الطلب"),
+    title: data.sceneTitle || (step === 4 ? "تم تسليم طلبك" : step === 3 ? "شحنتك في الطريق" : step === 2 ? "طلبك قيد التجهيز" : "تم استلام طلبك"),
+    text: data.sceneText || (step === 4 ? "تم تسجيل الطلب كمُسلّم بنجاح." : step === 3 ? "تم تسليم طلبك لشركة الشحن وهو مستمر في مسار التوصيل." : step === 2 ? "يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن." : "تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة.")
+  };
 }
 
-function renderHistory(items, allowHistory){
-  // لا ننشئ خانة التحديثات قبل أن تؤكد سلة أن الطلب دخل مرحلة الشحن.
-  let box = document.getElementById("shipmentHistory");
-  if(!allowHistory){
-    if(box) box.remove();
-    return;
-  }
+function historyLabel(status){
+  const s = String(status || "").toLowerCase();
+  if(/delivered|تم التسليم/.test(s)) return "تم تسليم الشحنة";
+  if(/out.?for.?delivery|خرجت.*للتسليم|جاري.*التوصيل/.test(s)) return "خرجت الشحنة للتسليم";
+  if(/arrived.?terminal|arrived.?hub|وصلت.*محطه|وصلت.*الفرع/.test(s)) return "وصلت إلى محطة شركة الشحن";
+  if(/picked.?up|pickup|collected|received.?by.?carrier|استلمت.*شركه.*الشحن|استلم.*الناقل/.test(s)) return "استلمت شركة الشحن الشحنة";
+  if(/in.?transit|transit|departed|في.*الطريق/.test(s)) return "الشحنة في الطريق";
+  if(/returned|return.?to.?sender|مرتجع/.test(s)) return "الشحنة مرتجعة";
+  return status || "تحديث على الشحنة";
+}
 
-  const list = Array.isArray(items)
-    ? items.filter(isCarrierHistoryEvent).slice(0,6)
-    : [];
+function renderHistory(items){
+  let box = document.getElementById("shipmentHistory");
+  const list = Array.isArray(items) ? items.slice(0,6) : [];
 
   if(!list.length){
-    if(box) box.remove();
+    if(box) box.style.display = "none";
     return;
   }
 
@@ -1911,7 +1840,7 @@ function renderHistory(items, allowHistory){
     document.getElementById("scene").insertAdjacentHTML("afterend", `
       <div id="shipmentHistory" class="compact-history">
         <div class="head">
-          <div class="title">تحديثات شركة الشحن</div>
+          <div class="title">آخر تحديثات شركة الشحن</div>
           <div class="tag">مباشر</div>
         </div>
         <div id="historyRows"></div>
@@ -1923,7 +1852,7 @@ function renderHistory(items, allowHistory){
   box.style.display = "block";
   rows.innerHTML = list.map(item => {
     const time = formatDate(item.date || item.timestamp);
-    const desc = item.description || item.note || "";
+    const desc = item.description || "";
     return `<div class="row">
       <div class="dot">✓</div>
       <div class="line">
@@ -1935,18 +1864,39 @@ function renderHistory(items, allowHistory){
   }).join("");
 }
 
+function removeSaeediActions(){
+  document.getElementById("saeediActions")?.remove();
+}
+
+function renderSaeedi(data){
+  removeSaeediActions();
+
+  if(!data.isSaeedi || Number(data.stage) < 3 || !data.specialMessage){
+    return false;
+  }
+
+  document.getElementById("updateTitle").textContent = "شركة الصاعدي للشحن";
+  document.getElementById("updateText").textContent = data.specialMessage;
+
+  const updateBox = document.querySelector(".update");
+  updateBox.insertAdjacentHTML("afterend", `
+    <div id="saeediActions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px">
+      <a href="tel:${escapeHtml(data.carrierPhone || "0566276686")}" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">اتصال بالصاعدي</a>
+      <a href="${escapeHtml(data.carrierLocation || "#")}" target="_blank" rel="noopener" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">موقع الصاعدي</a>
+    </div>`);
+
+  return true;
+}
+
 function render(orderId, data){
   const p = presentation(data);
 
   document.getElementById("statusText").textContent = p.status;
-  document.getElementById("orderNo").textContent = "رقم الطلب #" + orderId;
+  document.getElementById("orderNo").textContent = "رقم الطلب #" + (data.orderId || orderId);
   document.getElementById("detailStatus").textContent = p.status;
-  document.getElementById("carrier").textContent =
-    data.deliveryCompany ? String(data.deliveryCompany).toUpperCase() : "—";
-  document.getElementById("trackingNumber").textContent =
-    data.trackingNumber || data.shipmentId || "—";
-  document.getElementById("packageCount").textContent =
-    data.packageCount ?? "—";
+  document.getElementById("carrier").textContent = data.deliveryCompany || "—";
+  document.getElementById("trackingNumber").textContent = data.trackingNumber || data.shipmentId || "—";
+  document.getElementById("packageCount").textContent = data.packageCount ?? "—";
 
   document.getElementById("sceneTitle").textContent = p.title;
   document.getElementById("sceneCaption").textContent = p.text;
@@ -1955,18 +1905,14 @@ function render(orderId, data){
   setSteps(p.step);
   syncMedia(p.scene);
 
-  const trackingLink = document.getElementById("trackingLink");
-  const saeediNote = document.getElementById("saeediNote");
-  const carrierName = String(data.deliveryCompany || "").toLowerCase();
-  const isSaeedi = /الصاعدي|saeedi|alsaedi|al.?saeedi/.test(carrierName);
-
-  saeediNote.style.display = isSaeedi ? "block" : "none";
-  if(isSaeedi && data.specialMessage){
-    const textNode = saeediNote.querySelector("p") || saeediNote;
-    if(textNode.tagName === "P") textNode.textContent = data.specialMessage;
+  const isSpecialSaeedi = renderSaeedi(data);
+  if(!isSpecialSaeedi){
+    document.getElementById("updateTitle").textContent = p.status;
+    document.getElementById("updateText").textContent = p.text;
   }
 
-  if(data.trackingUrl && !isSaeedi){
+  const trackingLink = document.getElementById("trackingLink");
+  if(!data.isSaeedi && data.trackingUrl){
     trackingLink.href = data.trackingUrl;
     trackingLink.style.display = "flex";
   } else {
@@ -1978,9 +1924,13 @@ function render(orderId, data){
     latest.textContent = data.date ? "آخر تحديث: " + formatDate(data.date) : "آخر تحديث";
   }
 
-  renderHistory(data.history, data.shippingConfirmed === true && !isSaeedi);
+  // لا تظهر هنا إلا الأحداث التي فلترها الخادم كأحداث شركة شحن حقيقية.
+  renderHistory(data.history);
+
   errorBox.classList.remove("show");
   result.classList.add("show");
+  if(searchCard) searchCard.style.display = "none";
+
   setTimeout(() => result.scrollIntoView({behavior:"smooth",block:"start"}),60);
 }
 
@@ -2001,18 +1951,22 @@ async function track(){
   trackBtn.textContent = "جاري البحث...";
 
   try{
-    const response = await fetch("/api/oto-track?order=" + encodeURIComponent(orderId), {
-      headers:{"Accept":"application/json"}
+    const response = await fetch("/api/oto-track?order=" + encodeURIComponent(orderId) + "&_=" + Date.now(), {
+      headers:{"Accept":"application/json"},
+      cache:"no-store"
     });
-    const data = await response.json();
 
-    if(!response.ok || !data.ok)
+    let data = {};
+    try { data = await response.json(); } catch(e){}
+
+    if(!response.ok || !data.ok){
       throw new Error(data.error || "تعذر العثور على الطلب");
+    }
 
     render(orderId, data);
-    document.querySelector(".search-card").style.display = "none";
   }catch(err){
     result.classList.remove("show");
+    if(searchCard) searchCard.style.display = "block";
     errorBox.textContent = err.message || "حدث خطأ أثناء التتبع.";
     errorBox.classList.add("show");
   }finally{
@@ -2028,13 +1982,17 @@ input.addEventListener("keydown", e => {
 
 document.getElementById("newSearch").addEventListener("click", () => {
   input.value = "";
-  document.querySelector(".search-card").style.display = "block";
   result.classList.remove("show");
   errorBox.classList.remove("show");
+  removeSaeediActions();
+  const history = document.getElementById("shipmentHistory");
+  if(history) history.style.display = "none";
+  if(searchCard) searchCard.style.display = "block";
   window.scrollTo({top:0,behavior:"smooth"});
   setTimeout(() => input.focus(),250);
 });
 </script>
+
 
 </body>
 </html>
