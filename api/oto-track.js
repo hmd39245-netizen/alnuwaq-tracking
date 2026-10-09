@@ -12,74 +12,127 @@ export default async function handler(req, res) {
   }
 
   try {
-    // سلة أولاً: هي المرجع النهائي للحالة إذا الطلب موجود فيها
+    // ==========================================
+    // 1) سلة أولاً
+    // ==========================================
     const sallaResult = await getSallaOrder(query);
 
     if (sallaResult.type === "error") {
       return res.status(503).json({
         ok: false,
-        error: "تعذر قراءة حالة الطلب من سلة حالياً، حاول مرة أخرى بعد قليل"
+        error: "تعذر قراءة حالة الطلب من سلة حالياً، حاول مرة أخرى"
       });
     }
 
     if (sallaResult.type === "found") {
       const salla = sallaResult.order;
-      const statusInfo = classifySallaStatus(salla.status);
-      const isSaeediOrder = isSaeedi(salla.shippingCompany);
+      const stage = classifySallaStatus(salla.status);
 
-      // الصاعدي يعتمد على سلة بالكامل
-      if (isSaeediOrder) {
+      // ==========================================
+      // الصاعدي - لا نغير أي شيء عليه
+      // ==========================================
+      if (isSaeedi(salla.shippingCompany)) {
         return res.status(200).json(
-          buildSaeediResponse(query, salla, statusInfo)
+          buildSaeediResponse(query, salla, stage)
         );
       }
 
-      // قبل الشحن لا نسمح لـ OTO بتغيير الحالة
-      if (statusInfo.stage < 3) {
+      // ==========================================
+      // قبل الشحن:
+      // سلة هي المرجع النهائي ولا نسمح لـ OTO
+      // بتغيير الحالة
+      // ==========================================
+      if (stage < 3) {
         return res.status(200).json({
           ok: true,
+
           source: "salla",
-          orderId: salla.orderNumber || query,
-          rawStatus: salla.status,
-          stage: statusInfo.stage,
 
-          ...uiForStage(statusInfo.stage),
+          orderId:
+            salla.orderNumber || query,
 
-          deliveryCompany:
-            cleanSallaCarrier(salla.shippingCompany),
+          searchKey:
+            salla.orderNumber || query,
+
+          searchType:
+            "order",
+
+          rawStatus:
+            salla.status,
+
+          stage,
+
+          ...uiForStage(stage),
+
+          deliveryCompany: "",
 
           trackingNumber: "",
+
           trackingUrl: "",
+
           shipmentId: "",
+
           packageCount: null,
-          date: salla.date || "",
+
+          date:
+            salla.date || "",
+
           history: [],
+
           isSaeedi: false
         });
       }
 
-      // بعد تأكيد سلة أن الطلب دخل مرحلة الشحن
-      // نستخدم OTO فقط لبيانات أرامكس والتحديثات الفعلية
-      const oto = await getOtoOrder(query);
+      // ==========================================
+      // 2) الطلب دخل مرحلة الشحن في سلة
+      // نروح لـ OTO برقم الطلب
+      // ==========================================
+      const oto =
+        await getOtoOrder(
+          salla.orderNumber || query
+        );
 
-      const carrierHistory =
-        oto ? buildCarrierHistory(oto) : [];
+      // إذا OTO رجع رقم تتبع:
+      // نخليه المرجع الرئيسي للشحنة
+      const trackingNumber =
+        oto?.trackingNumber || "";
+
+      const shipmentReference =
+        trackingNumber ||
+        oto?.shipmentId ||
+        "";
 
       return res.status(200).json({
         ok: true,
+
         source:
-          oto ? "salla+oto" : "salla",
+          oto
+            ? "salla+oto"
+            : "salla",
 
         orderId:
           salla.orderNumber || query,
 
+        // هذا يوضح للموقع أن الشحنة صار لها
+        // رقم تتبع فعلي
+        searchKey:
+          shipmentReference ||
+          salla.orderNumber ||
+          query,
+
+        searchType:
+          trackingNumber
+            ? "tracking"
+            : "order",
+
         rawStatus:
           salla.status,
 
-        stage:
-          statusInfo.stage,
+        // مهم:
+        // الحالة الأساسية دائماً من سلة
+        stage,
 
-        ...uiForStage(statusInfo.stage),
+        ...uiForStage(stage),
 
         deliveryCompany:
           normalizeCarrierName(
@@ -89,8 +142,7 @@ export default async function handler(req, res) {
             salla.shippingCompany
           ),
 
-        trackingNumber:
-          oto?.trackingNumber || "",
+        trackingNumber,
 
         trackingUrl:
           oto?.trackingUrl || "",
@@ -106,16 +158,23 @@ export default async function handler(req, res) {
           salla.date ||
           "",
 
+        // التحديثات من بيانات الشحنة
+        // ونفلتر تحديثات OTO الداخلية
         history:
-          carrierHistory,
+          oto
+            ? buildCarrierHistory(oto)
+            : [],
 
         isSaeedi: false
       });
     }
 
-    // إذا الطلب غير موجود في سلة
-    // نرجع إلى OTO للطلبات القديمة
-    const oto = await getOtoOrder(query);
+    // ==========================================
+    // 3) الطلبات القديمة غير الموجودة في سلة
+    // نحافظ على دعمها من OTO
+    // ==========================================
+    const oto =
+      await getOtoOrder(query);
 
     if (!oto) {
       return res.status(404).json({
@@ -124,34 +183,47 @@ export default async function handler(req, res) {
       });
     }
 
-    const otoStage =
+    const stage =
       classifyOtoStatus(
         oto.status,
         oto.dcStatus
       );
 
+    const trackingNumber =
+      oto.trackingNumber || "";
+
     return res.status(200).json({
       ok: true,
+
       source: "oto",
+
       orderId: query,
+
+      searchKey:
+        trackingNumber ||
+        oto.shipmentId ||
+        query,
+
+      searchType:
+        trackingNumber
+          ? "tracking"
+          : "order",
 
       rawStatus:
         oto.status ||
         oto.dcStatus ||
         "",
 
-      stage:
-        otoStage,
+      stage,
 
-      ...uiForStage(otoStage),
+      ...uiForStage(stage),
 
       deliveryCompany:
         normalizeCarrierName(
           oto.deliveryCompany
         ),
 
-      trackingNumber:
-        oto.trackingNumber || "",
+      trackingNumber,
 
       trackingUrl:
         oto.trackingUrl || "",
@@ -166,7 +238,7 @@ export default async function handler(req, res) {
         oto.date || "",
 
       history:
-        otoStage >= 3
+        stage >= 3
           ? buildCarrierHistory(oto)
           : [],
 
@@ -187,41 +259,49 @@ export default async function handler(req, res) {
 }
 
 
-// ===============================
+// ==========================================
 // الصاعدي
-// ===============================
+// ==========================================
 
 function buildSaeediResponse(
   query,
   salla,
-  statusInfo
+  stage
 ) {
   const shipped =
-    statusInfo.stage >= 3;
+    stage >= 3;
 
   return {
     ok: true,
-    source: "salla-saeedi",
+
+    source:
+      "salla-saeedi",
 
     orderId:
       salla.orderNumber || query,
 
+    searchKey:
+      salla.orderNumber || query,
+
+    searchType:
+      "order",
+
     rawStatus:
       salla.status,
 
-    stage:
-      statusInfo.stage,
+    stage,
 
-    ...uiForStage(
-      statusInfo.stage
-    ),
+    ...uiForStage(stage),
 
     deliveryCompany:
       "الصاعدي",
 
     trackingNumber: "",
+
     trackingUrl: "",
+
     shipmentId: "",
+
     packageCount: null,
 
     date:
@@ -249,9 +329,9 @@ function buildSaeediResponse(
 }
 
 
-// ===============================
+// ==========================================
 // تنظيف النص
-// ===============================
+// ==========================================
 
 function normalize(value) {
   return String(value || "")
@@ -265,68 +345,52 @@ function normalize(value) {
 }
 
 
-// ===============================
+// ==========================================
 // حالات سلة
-// ===============================
+// ==========================================
 
 function classifySallaStatus(status) {
-  const s = normalize(status);
+  const s =
+    normalize(status);
 
   // تم التسليم
   if (
     /تم التسليم|تم التوصيل|مكتمل|delivered|completed|complete/.test(s)
   ) {
-    return {
-      stage: 4
-    };
+    return 4;
   }
 
-  // تم الشحن + جاري التوصيل = نفس المرحلة
+  // تم الشحن وجاري التوصيل نفس الشي
   if (
     /تم الشحن|تم شحن|مشحون|جاري التوصيل|قيد التوصيل|خرج للتسليم|خرجت للتسليم|في الطريق|shipped|shipping|in.?transit|transit|out.?for.?delivery/.test(s)
   ) {
-    return {
-      stage: 3
-    };
+    return 3;
   }
 
   // جاري التجهيز
   if (
     /جاري التجهيز|قيد التجهيز|تم التنفيذ|جاهز للشحن|بانتظار الشحن|انتظار الشحن|processing|preparing|ready|packed|packing/.test(s)
   ) {
-    return {
-      stage: 2
-    };
+    return 2;
   }
 
   // تحت المراجعة
-  if (
-    /بانتظار المراجعه|انتظار المراجعه|تحت المراجعه|قيد المراجعه|طلب جديد|تم الاستلام|تم استلام الطلب|pending|created|new/.test(s)
-  ) {
-    return {
-      stage: 1
-    };
-  }
-
-  // أي حالة غير معروفة تبقى تحت المراجعة
-  // ولا نسمح لـ OTO يقفز بها إلى الشحن
-  return {
-    stage: 1
-  };
+  return 1;
 }
 
 
-// ===============================
-// حالات OTO
-// ===============================
+// ==========================================
+// حالات OTO للطلبات القديمة فقط
+// ==========================================
 
 function classifyOtoStatus(
   status,
   dcStatus
 ) {
-  const s = normalize(
-    `${status || ""} ${dcStatus || ""}`
-  );
+  const s =
+    normalize(
+      `${status || ""} ${dcStatus || ""}`
+    );
 
   if (
     /delivered|completed|complete|تم التسليم|تم التوصيل/.test(s)
@@ -350,9 +414,9 @@ function classifyOtoStatus(
 }
 
 
-// ===============================
-// النص الظاهر بالموقع
-// ===============================
+// ==========================================
+// العرض للعميل
+// ==========================================
 
 function uiForStage(stage) {
   if (stage === 4) {
@@ -419,17 +483,20 @@ function uiForStage(stage) {
 }
 
 
-// ===============================
-// سلة
-// ===============================
+// ==========================================
+// قراءة سلة
+// ==========================================
 
-async function getSallaOrder(orderId) {
+async function getSallaOrder(
+  orderId
+) {
   const controller =
     new AbortController();
 
   const timer =
     setTimeout(
-      () => controller.abort(),
+      () =>
+        controller.abort(),
       10000
     );
 
@@ -439,8 +506,12 @@ async function getSallaOrder(orderId) {
         `${SALLA_TRACKING_URL}?order=${encodeURIComponent(orderId)}&_=${Date.now()}`,
         {
           method: "GET",
-          redirect: "follow",
-          cache: "no-store",
+
+          redirect:
+            "follow",
+
+          cache:
+            "no-store",
 
           headers: {
             Accept:
@@ -452,9 +523,12 @@ async function getSallaOrder(orderId) {
         }
       );
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       return {
-        type: "error"
+        type:
+          "error"
       };
     }
 
@@ -468,7 +542,8 @@ async function getSallaOrder(orderId) {
         JSON.parse(text);
     } catch {
       return {
-        type: "error"
+        type:
+          "error"
       };
     }
 
@@ -478,7 +553,8 @@ async function getSallaOrder(orderId) {
         "ORDER_NOT_FOUND"
     ) {
       return {
-        type: "not_found"
+        type:
+          "not_found"
       };
     }
 
@@ -487,7 +563,8 @@ async function getSallaOrder(orderId) {
       !data?.order
     ) {
       return {
-        type: "error"
+        type:
+          "error"
       };
     }
 
@@ -498,23 +575,29 @@ async function getSallaOrder(orderId) {
       order: {
         orderNumber:
           String(
-            data.order.orderNumber ||
+            data.order
+              .orderNumber ||
             orderId
           ).trim(),
 
         status:
           String(
-            data.order.status || ""
+            data.order
+              .status ||
+            ""
           ).trim(),
 
         date:
           String(
-            data.order.date || ""
+            data.order
+              .date ||
+            ""
           ).trim(),
 
         shippingCompany:
           String(
-            data.order.shippingCompany ||
+            data.order
+              .shippingCompany ||
             ""
           ).trim()
       }
@@ -522,24 +605,32 @@ async function getSallaOrder(orderId) {
 
   } catch {
     return {
-      type: "error"
+      type:
+        "error"
     };
 
   } finally {
-    clearTimeout(timer);
+    clearTimeout(
+      timer
+    );
   }
 }
 
 
-// ===============================
+// ==========================================
 // OTO
-// ===============================
+// ==========================================
 
-async function getOtoOrder(orderId) {
+async function getOtoOrder(
+  orderId
+) {
   const refreshToken =
-    process.env.OTO_REFRESH_TOKEN;
+    process.env
+      .OTO_REFRESH_TOKEN;
 
-  if (!refreshToken) {
+  if (
+    !refreshToken
+  ) {
     return null;
   }
 
@@ -548,7 +639,8 @@ async function getOtoOrder(orderId) {
       await fetch(
         "https://api.tryoto.com/rest/v2/refreshToken",
         {
-          method: "POST",
+          method:
+            "POST",
 
           headers: {
             "Content-Type":
@@ -598,7 +690,9 @@ async function getOtoOrder(orderId) {
       await fetch(
         "https://api.tryoto.com/rest/v2/orderStatus",
         {
-          method: "POST",
+          method:
+            "POST",
+
           headers,
 
           body:
@@ -615,7 +709,8 @@ async function getOtoOrder(orderId) {
 
     if (
       !statusResponse.ok ||
-      statusData?.success === false
+      statusData?.success ===
+        false
     ) {
       return null;
     }
@@ -673,7 +768,9 @@ async function getOtoOrder(orderId) {
         await fetch(
           `https://api.tryoto.com/rest/v2/orderDetails?orderId=${encodeURIComponent(orderId)}`,
           {
-            method: "GET",
+            method:
+              "GET",
+
             headers
           }
         );
@@ -690,7 +787,9 @@ async function getOtoOrder(orderId) {
         await fetch(
           "https://api.tryoto.com/rest/v2/orderHistory",
           {
-            method: "POST",
+            method:
+              "POST",
+
             headers,
 
             body:
@@ -770,11 +869,13 @@ async function getOtoOrder(orderId) {
 }
 
 
-// ===============================
-// تحديثات شركة الشحن فقط
-// ===============================
+// ==========================================
+// تحديثات الناقل فقط
+// ==========================================
 
-function buildCarrierHistory(oto) {
+function buildCarrierHistory(
+  oto
+) {
   const events =
     Array.isArray(
       oto?.history
@@ -782,8 +883,6 @@ function buildCarrierHistory(oto) {
       ? [...oto.history]
       : [];
 
-  // الحالة الحالية تضاف فقط
-  // إذا كانت حركة فعلية من الناقل
   if (
     isCarrierEvent(
       `${oto?.dcStatus || ""} ${oto?.status || ""}`
@@ -812,7 +911,7 @@ function buildCarrierHistory(oto) {
         `${item?.status || ""} ${item?.description || ""}`;
 
       if (
-        !isCarrierEvent(
+        isInternalOtoEvent(
           combined
         )
       ) {
@@ -820,7 +919,7 @@ function buildCarrierHistory(oto) {
       }
 
       if (
-        isInternalOtoEvent(
+        !isCarrierEvent(
           combined
         )
       ) {
@@ -844,8 +943,9 @@ function buildCarrierHistory(oto) {
 }
 
 
-// تحديث فعلي من شركة الشحن
-function isCarrierEvent(value) {
+function isCarrierEvent(
+  value
+) {
   const s =
     normalize(value);
 
@@ -855,8 +955,9 @@ function isCarrierEvent(value) {
 }
 
 
-// تحديث داخلي من OTO لا يظهر
-function isInternalOtoEvent(value) {
+function isInternalOtoEvent(
+  value
+) {
   const s =
     normalize(value);
 
@@ -866,11 +967,13 @@ function isInternalOtoEvent(value) {
 }
 
 
-// ===============================
-// شركات الشحن
-// ===============================
+// ==========================================
+// الشركات
+// ==========================================
 
-function isSaeedi(company) {
+function isSaeedi(
+  company
+) {
   const s =
     normalize(company);
 
@@ -880,7 +983,9 @@ function isSaeedi(company) {
 }
 
 
-function cleanSallaCarrier(company) {
+function cleanSallaCarrier(
+  company
+) {
   const c =
     String(
       company || ""
@@ -897,7 +1002,9 @@ function cleanSallaCarrier(company) {
 }
 
 
-function normalizeCarrierName(company) {
+function normalizeCarrierName(
+  company
+) {
   const c =
     String(
       company || ""
@@ -932,11 +1039,13 @@ function normalizeCarrierName(company) {
 }
 
 
-// ===============================
-// أدوات مساعدة
-// ===============================
+// ==========================================
+// مساعدات
+// ==========================================
 
-async function safeJson(response) {
+async function safeJson(
+  response
+) {
   try {
     return await response.json();
   } catch {
@@ -945,7 +1054,10 @@ async function safeJson(response) {
 }
 
 
-function firstValue(obj, keys) {
+function firstValue(
+  obj,
+  keys
+) {
   for (
     const key
     of keys
@@ -961,7 +1073,9 @@ function firstValue(obj, keys) {
       value !== null &&
       value !== ""
     ) {
-      return String(value);
+      return String(
+        value
+      );
     }
   }
 
@@ -969,7 +1083,10 @@ function firstValue(obj, keys) {
 }
 
 
-function findField(value, key) {
+function findField(
+  value,
+  key
+) {
   if (
     !value ||
     typeof value !==
@@ -979,17 +1096,21 @@ function findField(value, key) {
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(
-      value,
-      key
-    )
+    Object.prototype
+      .hasOwnProperty
+      .call(
+        value,
+        key
+      )
   ) {
     return value[key];
   }
 
   for (
     const child
-    of Object.values(value)
+    of Object.values(
+      value
+    )
   ) {
     if (
       child &&
@@ -1003,7 +1124,8 @@ function findField(value, key) {
         );
 
       if (
-        found !== undefined
+        found !==
+          undefined
       ) {
         return found;
       }
@@ -1025,7 +1147,8 @@ function findNumericField(
     );
 
   if (
-    value === undefined ||
+    value ===
+      undefined ||
     value === null ||
     value === ""
   ) {
@@ -1043,7 +1166,9 @@ function findNumericField(
 }
 
 
-function normalizeHistory(raw) {
+function normalizeHistory(
+  raw
+) {
   const arrays = [];
 
   collectArrays(
@@ -1182,7 +1307,10 @@ function collectArrays(
 }
 
 
-function pick(obj, keys) {
+function pick(
+  obj,
+  keys
+) {
   for (
     const key
     of keys
@@ -1203,7 +1331,9 @@ function pick(obj, keys) {
 }
 
 
-function redactPII(value) {
+function redactPII(
+  value
+) {
   let text =
     String(
       value || ""
