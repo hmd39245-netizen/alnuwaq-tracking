@@ -1653,6 +1653,27 @@ main,
 }
 </style>
 
+
+<style>
+.saeedi-note{
+  display:none;
+  margin-top:9px;
+  padding:11px 12px;
+  border-radius:10px;
+  background:rgba(111,78,55,.14);
+  border:1px solid rgba(248,227,190,.14);
+}
+.saeedi-note strong{display:block;font-size:12px;color:#f8e3be;margin-bottom:4px}
+.saeedi-note p{margin:0;color:#d7deea;font-size:10.5px;line-height:1.7}
+.saeedi-actions{display:flex;gap:7px;margin-top:9px}
+.saeedi-actions a{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  text-decoration:none;color:#fff;font-size:10.5px;font-weight:700;
+  padding:9px 8px;border-radius:9px;
+  background:linear-gradient(180deg,#78543a,#67452f);
+  border:1px solid rgba(255,255,255,.08);
+}
+</style>
 </head>
 <body>
 <header>
@@ -1728,6 +1749,16 @@ main,
               <p id="updateText">—</p>
             </div>
 
+
+            <div id="saeediNote" class="saeedi-note">
+              <strong>شركة الصاعدي</strong>
+              <p>تم شحن طلبك مع الصاعدي، والتوصيل خلال 3 أيام عمل كحد أقصى.</p>
+              <div class="saeedi-actions">
+                <a href="tel:0566276686">اتصال بالصاعدي</a>
+                <a href="https://maps.app.goo.gl/NNJ3VgvtCKpaJKkcA" target="_blank" rel="noopener">موقع الصاعدي</a>
+              </div>
+            </div>
+
             <a id="trackingLink" class="tracking-link" href="#" target="_blank" rel="noopener">تتبع الشحنة لدى شركة الشحن</a>
 
             <div class="help">
@@ -1792,92 +1823,26 @@ function formatDate(value){
 }
 
 function presentation(data){
-  const sallaStatus = String(
-    data.sallaStatus || (data.source === "salla" ? data.status : "") || ""
-  ).trim().toLowerCase();
+  const both = (String(data.status||"") + " " + String(data.dcStatus||"")).toLowerCase();
 
-  const otoStatus = (
-    String(data.status || "") + " " +
-    String(data.dcStatus || "")
-  ).trim().toLowerCase();
+  if(/delivered|complete|completed/.test(both))
+    return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
 
-  // الحالات المبكرة في سلة لها الأولوية دائمًا.
-  // طباعة بوليصة أو وجود حالة في OTO لا يعني أن الطلب شُحن فعليًا.
-  if(/بانتظار المراجعة|انتظار المراجعة|تحت المراجعة|قيد المراجعة|awaiting.?review|pending.?review|^pending$|^created$/.test(sallaStatus)){
-    return {
-      step:1,
-      scene:"received",
-      status:"تم استلام الطلب",
-      title:"تم استلام طلبك",
-      text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."
-    };
-  }
+  if(/out.?for.?delivery/.test(both))
+    return {step:3,scene:"shipped",status:"خرجت للتسليم",title:"شحنتك في الطريق إليك",text:"خرجت الشحنة للتسليم وهي في طريقها إليك."};
 
-  if(/جاري التجهيز|قيد التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(sallaStatus)){
-    return {
-      step:2,
-      scene:"preparing",
-      status:"جاري التجهيز",
-      title:"طلبك قيد التجهيز",
-      text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."
-    };
-  }
-
-  // بعد تجاوز المراحل المبكرة، نستفيد من حالة سلة و OTO معًا.
-  const both = (sallaStatus + " " + otoStatus).trim();
-
-  if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(both)){
-    return {
-      step:4,
-      scene:"delivered",
-      status:"تم التسليم",
-      title:"تم تسليم طلبك",
-      text:"تم تسجيل الطلب كمُسلّم بنجاح."
-    };
-  }
-
-  if(/جاري التوصيل|خرجت للتسليم|out.?for.?delivery/.test(both)){
-    return {
-      step:3,
-      scene:"shipped",
-      status:"جاري التوصيل",
-      title:"شحنتك في الطريق إليك",
-      text:"خرجت الشحنة للتسليم وهي في طريقها إليك."
-    };
-  }
-
-  if(/تم الشحن|شحن|shipped|transit|arrived.?terminal|terminal|pickup|picked|dispatch/.test(both)){
+  if(data.deliveryCompany || data.trackingUrl || data.trackingNumber ||
+     /shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both)){
     const text = /arrived.?terminal/.test(both)
       ? "وصلت الشحنة إلى محطة أو فرع شركة الشحن وهي مستمرة في مسار التوصيل."
       : "تم تسليم الطلب لشركة الشحن وهو مستمر في مسار التوصيل.";
-
-    return {
-      step:3,
-      scene:"shipped",
-      status:"تم الشحن",
-      title:"شحنتك في الطريق",
-      text
-    };
+    return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text};
   }
 
-  // إذا لم ترسل سلة حالة واضحة، نتعامل مع الحالات العامة كمرحلة تجهيز.
-  if(/processing|preparing|ready|warehouse|packed|packing/.test(otoStatus)){
-    return {
-      step:2,
-      scene:"preparing",
-      status:"جاري التجهيز",
-      title:"طلبك قيد التجهيز",
-      text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."
-    };
-  }
+  if(/processing|preparing|ready|created|pending|warehouse|packed|packing/.test(both))
+    return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
 
-  return {
-    step:1,
-    scene:"received",
-    status:"تم استلام الطلب",
-    title:"تم استلام طلبك",
-    text:"تم تسجيل طلبك بنجاح وبدأت مراجعته."
-  };
+  return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وبدأت مراجعته."};
 }
 
 function historyLabel(status){
@@ -1961,7 +1926,13 @@ function render(orderId, data){
   syncMedia(p.scene);
 
   const trackingLink = document.getElementById("trackingLink");
-  if(data.trackingUrl){
+  const saeediNote = document.getElementById("saeediNote");
+  const carrierName = String(data.deliveryCompany || "").toLowerCase();
+  const isSaeedi = /الصاعدي|saeedi|alsaedi|al.?saeedi/.test(carrierName);
+
+  saeediNote.style.display = isSaeedi ? "block" : "none";
+
+  if(data.trackingUrl && !isSaeedi){
     trackingLink.href = data.trackingUrl;
     trackingLink.style.display = "flex";
   } else {
@@ -2005,6 +1976,7 @@ async function track(){
       throw new Error(data.error || "تعذر العثور على الطلب");
 
     render(orderId, data);
+    document.querySelector(".search-card").style.display = "none";
   }catch(err){
     result.classList.remove("show");
     errorBox.textContent = err.message || "حدث خطأ أثناء التتبع.";
@@ -2022,6 +1994,7 @@ input.addEventListener("keydown", e => {
 
 document.getElementById("newSearch").addEventListener("click", () => {
   input.value = "";
+  document.querySelector(".search-card").style.display = "block";
   result.classList.remove("show");
   errorBox.classList.remove("show");
   window.scrollTo({top:0,behavior:"smooth"});
