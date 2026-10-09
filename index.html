@@ -1868,13 +1868,35 @@ function escapeHtml(v){
     .replaceAll("'","&#039;");
 }
 
+function isCarrierHistoryEvent(item){
+  const status = (
+    String(item?.status || "") + " " +
+    String(item?.dcStatus || "") + " " +
+    String(item?.code || "")
+  ).toLowerCase().replace(/\s+/g," ").trim();
+
+  const desc = (
+    String(item?.description || "") + " " +
+    String(item?.note || "")
+  ).toLowerCase().replace(/\s+/g," ").trim();
+
+  // أحداث إدارية داخل OTO لا تخص حركة الشحنة لدى شركة الشحن.
+  const adminEvent = /updated?|update|created|edited|changed|location|address|sender|warehouse|processing|preparing|ready|packing|packed|موقع الإرسال|موقع الارسال|تحديث موقع|تحديث.*العنوان|تعديل.*العنوان|العنوان|بيانات المرسل|المرسل|تم تحديث|تم تعديل/;
+  if(adminEvent.test(status) || adminEvent.test(desc)) return false;
+
+  // نعتمد فقط أحداث النقل الفعلية بعد استلام شركة الشحن للشحنة.
+  const realCarrierEvent = /picked.?up|shipment.?picked|collected|received.?by.?carrier|carrier.?received|accepted.?by.?carrier|arrived.?terminal|arrived.?hub|in.?transit|transit|departed|out.?for.?delivery|delivery.?attempt|delivered|returned|return.?to.?sender|استلمت.*شركة.*الشحن|استلام.*شركة.*الشحن|استلم.*الناقل|تم.*استلام.*الشحنة|وصلت.*محطة|وصلت.*الفرع|غادرت.*المحطة|في.*الطريق|جاري.*التوصيل|خرجت.*للتسليم|تم.*التسليم/;
+
+  return realCarrierEvent.test(status) || realCarrierEvent.test(desc);
+}
+
 function renderHistory(items){
   let box = document.getElementById("shipmentHistory");
   if(!box){
     document.getElementById("scene").insertAdjacentHTML("afterend", `
       <div id="shipmentHistory" class="compact-history">
         <div class="head">
-          <div class="title">آخر تحديثات الشحنة</div>
+          <div class="title">تحديثات شركة الشحن</div>
           <div class="tag">مباشر</div>
         </div>
         <div id="historyRows"></div>
@@ -1883,10 +1905,14 @@ function renderHistory(items){
   }
 
   const rows = box.querySelector("#historyRows");
-  const list = Array.isArray(items) ? items.slice(0,6) : [];
+  const list = Array.isArray(items)
+    ? items.filter(isCarrierHistoryEvent).slice(0,6)
+    : [];
 
+  // قبل أن تستلم شركة الشحن الطلب لا يظهر هذا القسم نهائيًا.
   if(!list.length){
     box.style.display = "none";
+    rows.innerHTML = "";
     return;
   }
 
