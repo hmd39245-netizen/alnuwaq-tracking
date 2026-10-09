@@ -1823,53 +1823,26 @@ function formatDate(value){
 }
 
 function presentation(data){
-  // سلة هي المصدر الرئيسي لحالة الطلب.
-  // OTO يستخدم فقط لتفاصيل الشحن بعد دخول الطلب مرحلة الشحن.
-  const salla = String(data.sallaStatus || "").toLowerCase().replace(/\s+/g," ").trim();
-  const oto = (
-    String(data.status || "") + " " +
-    String(data.dcStatus || "")
-  ).toLowerCase().replace(/\s+/g," ").trim();
-
-  // إذا كانت حالة سلة موجودة نعتمدها أولًا دائمًا.
-  if(salla){
-    if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(salla)){
-      return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
-    }
-
-    if(/جاري التوصيل|خرجت للتسليم|تم الشحن|shipped|out.?for.?delivery|in.?transit|transit/.test(salla)){
-      return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text:"تم تسليم طلبك لشركة الشحن وهو مستمر في مسار التوصيل."};
-    }
-
-    if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(salla)){
-      return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
-    }
-
-    // أي حالة مبكرة في سلة، ومنها بانتظار/تحت المراجعة، تبقى في الخطوة الأولى.
-    return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."};
+  // المنطق النهائي للحالة يأتي من API نفسه.
+  if(Number(data.stage) >= 1 && Number(data.stage) <= 4 && data.displayStatus){
+    return {
+      step:Number(data.stage),
+      scene:data.scene || (Number(data.stage)===4 ? "delivered" : Number(data.stage)===3 ? "shipped" : Number(data.stage)===2 ? "preparing" : "received"),
+      status:data.displayStatus,
+      title:data.sceneTitle || data.displayStatus,
+      text:data.sceneText || ""
+    };
   }
 
-  // للطلبات القديمة غير الموجودة في سلة نرجع لمنطق OTO.
-  if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(oto)){
+  // احتياط للنسخ القديمة من API فقط.
+  const both = (String(data.status||"") + " " + String(data.dcStatus||"")).toLowerCase();
+  if(/delivered|complete|completed/.test(both))
     return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
-  }
-
-  if(/جاري التوصيل|خرجت للتسليم|out.?for.?delivery/.test(oto)){
-    return {step:3,scene:"shipped",status:"جاري التوصيل",title:"شحنتك في الطريق إليك",text:"خرجت الشحنة للتسليم وهي في طريقها إليك."};
-  }
-
-  if(/تم الشحن|shipped|in.?transit|transit|arrived.?terminal|arrived.?hub|picked.?up|pickup|collected|received.?by.?carrier|carrier.?received|accepted.?by.?carrier|dispatch/.test(oto)){
-    const text = /arrived.?terminal|arrived.?hub/.test(oto)
-      ? "وصلت الشحنة إلى محطة أو فرع شركة الشحن وهي مستمرة في مسار التوصيل."
-      : "تم استلام الشحنة من شركة الشحن وهي مستمرة في مسار التوصيل.";
-    return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text};
-  }
-
-  if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(oto)){
+  if(/out.?for.?delivery|shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both))
+    return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text:"تم تسليم الطلب لشركة الشحن وهو مستمر في مسار التوصيل."};
+  if(/processing|preparing|ready|warehouse|packed|packing/.test(both))
     return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
-  }
-
-  return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وبدأت مراجعته."};
+  return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."};
 }
 
 function historyLabel(status){
@@ -1988,6 +1961,10 @@ function render(orderId, data){
   const isSaeedi = /الصاعدي|saeedi|alsaedi|al.?saeedi/.test(carrierName);
 
   saeediNote.style.display = isSaeedi ? "block" : "none";
+  if(isSaeedi && data.specialMessage){
+    const textNode = saeediNote.querySelector("p") || saeediNote;
+    if(textNode.tagName === "P") textNode.textContent = data.specialMessage;
+  }
 
   if(data.trackingUrl && !isSaeedi){
     trackingLink.href = data.trackingUrl;
@@ -2001,7 +1978,7 @@ function render(orderId, data){
     latest.textContent = data.date ? "آخر تحديث: " + formatDate(data.date) : "آخر تحديث";
   }
 
-  renderHistory(data.history, p.step >= 3 && !/الصاعدي|saeedi|alsaedi|al.?saeedi/i.test(String(data.deliveryCompany || data.sallaShippingCompany || "")));
+  renderHistory(data.history, data.shippingConfirmed === true && !isSaeedi);
   errorBox.classList.remove("show");
   result.classList.add("show");
   setTimeout(() => result.scrollIntoView({behavior:"smooth",block:"start"}),60);
