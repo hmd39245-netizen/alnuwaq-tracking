@@ -1823,24 +1823,35 @@ function formatDate(value){
 }
 
 function presentation(data){
-  const both = (String(data.status||"") + " " + String(data.dcStatus||"")).toLowerCase();
+  const both = (
+    String(data.status || "") + " " +
+    String(data.dcStatus || "")
+  ).toLowerCase().replace(/\s+/g," ").trim();
 
-  if(/delivered|complete|completed/.test(both))
+  // حالات المراجعة أولًا: لا يجوز اعتبارها شحن حتى لو كانت البوليصة أو شركة الشحن موجودة.
+  if(/بانتظار المراجعة|انتظار المراجعة|تحت المراجعة|قيد المراجعة|pending|created/.test(both)){
+    return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وهو الآن قيد المراجعة."};
+  }
+
+  if(/تم التسليم|تم التوصيل|delivered|complete|completed/.test(both)){
     return {step:4,scene:"delivered",status:"تم التسليم",title:"تم تسليم طلبك",text:"تم تسجيل الطلب كمُسلّم بنجاح."};
+  }
 
-  if(/out.?for.?delivery/.test(both))
-    return {step:3,scene:"shipped",status:"خرجت للتسليم",title:"شحنتك في الطريق إليك",text:"خرجت الشحنة للتسليم وهي في طريقها إليك."};
+  if(/جاري التوصيل|خرجت للتسليم|out.?for.?delivery/.test(both)){
+    return {step:3,scene:"shipped",status:"جاري التوصيل",title:"شحنتك في الطريق إليك",text:"خرجت الشحنة للتسليم وهي في طريقها إليك."};
+  }
 
-  if(data.deliveryCompany || data.trackingUrl || data.trackingNumber ||
-     /shipped|transit|terminal|pickup|picked|dispatch|awb/.test(both)){
-    const text = /arrived.?terminal/.test(both)
+  // الشحن يعتمد على الحالة الفعلية فقط، وليس وجود شركة/بوليصة/رقم تتبع.
+  if(/تم الشحن|shipped|in.?transit|transit|arrived.?terminal|arrived.?hub|picked.?up|pickup|collected|received.?by.?carrier|carrier.?received|accepted.?by.?carrier|dispatch/.test(both)){
+    const text = /arrived.?terminal|arrived.?hub/.test(both)
       ? "وصلت الشحنة إلى محطة أو فرع شركة الشحن وهي مستمرة في مسار التوصيل."
-      : "تم تسليم الطلب لشركة الشحن وهو مستمر في مسار التوصيل.";
+      : "تم استلام الشحنة من شركة الشحن وهي مستمرة في مسار التوصيل.";
     return {step:3,scene:"shipped",status:"تم الشحن",title:"شحنتك في الطريق",text};
   }
 
-  if(/processing|preparing|ready|created|pending|warehouse|packed|packing/.test(both))
+  if(/جاري التجهيز|تم التنفيذ|processing|preparing|ready|warehouse|packed|packing/.test(both)){
     return {step:2,scene:"preparing",status:"جاري التجهيز",title:"طلبك قيد التجهيز",text:"يتم الآن تجهيز طلبك وتغليفه تمهيدًا للشحن."};
+  }
 
   return {step:1,scene:"received",status:"تم استلام الطلب",title:"تم استلام طلبك",text:"تم تسجيل طلبك بنجاح وبدأت مراجعته."};
 }
@@ -1891,7 +1902,18 @@ function isCarrierHistoryEvent(item){
 }
 
 function renderHistory(items){
+  // لا ننشئ خانة التحديثات أصلًا قبل وجود حركة حقيقية من شركة الشحن.
+  const list = Array.isArray(items)
+    ? items.filter(isCarrierHistoryEvent).slice(0,6)
+    : [];
+
   let box = document.getElementById("shipmentHistory");
+
+  if(!list.length){
+    if(box) box.remove();
+    return;
+  }
+
   if(!box){
     document.getElementById("scene").insertAdjacentHTML("afterend", `
       <div id="shipmentHistory" class="compact-history">
@@ -1905,17 +1927,6 @@ function renderHistory(items){
   }
 
   const rows = box.querySelector("#historyRows");
-  const list = Array.isArray(items)
-    ? items.filter(isCarrierHistoryEvent).slice(0,6)
-    : [];
-
-  // قبل أن تستلم شركة الشحن الطلب لا يظهر هذا القسم نهائيًا.
-  if(!list.length){
-    box.style.display = "none";
-    rows.innerHTML = "";
-    return;
-  }
-
   box.style.display = "block";
   rows.innerHTML = list.map(item => {
     const time = formatDate(item.date || item.timestamp);
