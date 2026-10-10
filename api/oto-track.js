@@ -21,9 +21,9 @@ export default async function handler(req, res) {
   try {
     const token = await getAccessToken();
 
-    // ==================================================
-    // 1) البحث في سلة أولاً
-    // ==================================================
+    // ==============================
+    // سلة أولاً
+    // ==============================
 
     const sallaResult = await getSallaOrder(query);
 
@@ -38,9 +38,9 @@ export default async function handler(req, res) {
       const salla = sallaResult.order;
       const stage = classifySallaStatus(salla.status);
 
-      // ==================================================
+      // ==============================
       // الصاعدي
-      // ==================================================
+      // ==============================
 
       if (isSaeedi(salla.shippingCompany)) {
         return res.status(200).json(
@@ -48,14 +48,13 @@ export default async function handler(req, res) {
         );
       }
 
-      // ==================================================
-      // قبل مرحلة الشحن نعتمد على سلة فقط
-      // ==================================================
+      // ==============================
+      // قبل الشحن نعتمد على سلة
+      // ==============================
 
       if (stage < 3) {
         return res.status(200).json({
           ok: true,
-
           source: "salla",
           inputType: "order",
 
@@ -85,10 +84,9 @@ export default async function handler(req, res) {
         });
       }
 
-      // ==================================================
-      // سلة تقول إن الطلب مشحون
-      // نجيب بيانات OTO
-      // ==================================================
+      // ==============================
+      // بعد الشحن
+      // ==============================
 
       const oto = token
         ? await getOtoOrder(
@@ -121,12 +119,13 @@ export default async function handler(req, res) {
         );
       }
 
-      // إذا trackShipment فيه تحديثات نستخدمها
-      // وإذا فاضية نرجع لتحديث OTO الحالي
+      // أهم تعديل:
+      // ندمج trackShipment + orderHistory
       const history =
-        shipment?.history?.length
-          ? shipment.history
-          : buildCarrierHistory(oto);
+        mergeHistories(
+          shipment?.history || [],
+          buildCarrierHistory(oto)
+        );
 
       return res.status(200).json({
         ok: true,
@@ -138,12 +137,13 @@ export default async function handler(req, res) {
               ? "salla+oto"
               : "salla",
 
-        inputType: "order",
+        inputType:
+          "order",
 
         orderId:
-          salla.orderNumber || query,
+          salla.orderNumber ||
+          query,
 
-        // حالة الطلب الأساسية من سلة
         stage,
 
         ...uiForStage(stage),
@@ -189,14 +189,14 @@ export default async function handler(req, res) {
 
         history,
 
-        isSaeedi: false
+        isSaeedi:
+          false
       });
     }
 
-    // ==================================================
-    // 2) غير موجود في سلة
-    // نجرب رقم طلب قديم في OTO
-    // ==================================================
+    // ==============================
+    // الطلبات القديمة من OTO
+    // ==============================
 
     if (
       token &&
@@ -238,9 +238,10 @@ export default async function handler(req, res) {
         }
 
         const history =
-          shipment?.history?.length
-            ? shipment.history
-            : buildCarrierHistory(oto);
+          mergeHistories(
+            shipment?.history || [],
+            buildCarrierHistory(oto)
+          );
 
         return res.status(200).json({
           ok: true,
@@ -250,7 +251,8 @@ export default async function handler(req, res) {
               ? "oto+tracking"
               : "oto",
 
-          inputType: "order",
+          inputType:
+            "order",
 
           orderId:
             query,
@@ -300,14 +302,15 @@ export default async function handler(req, res) {
               ? history
               : [],
 
-          isSaeedi: false
+          isSaeedi:
+            false
         });
       }
     }
 
-    // ==================================================
-    // 3) نجرب الرقم كتتبع أرامكس مباشر
-    // ==================================================
+    // ==============================
+    // رقم تتبع أرامكس مباشر
+    // ==============================
 
     if (
       token &&
@@ -329,10 +332,14 @@ export default async function handler(req, res) {
         return res.status(200).json({
           ok: true,
 
-          source: "tracking",
-          inputType: "tracking",
+          source:
+            "tracking",
 
-          orderId: "",
+          inputType:
+            "tracking",
+
+          orderId:
+            "",
 
           stage,
 
@@ -395,7 +402,7 @@ export default async function handler(req, res) {
 
 
 // ==================================================
-// التحقق من الأرقام
+// التحقق
 // ==================================================
 
 function onlyDigits(value) {
@@ -476,9 +483,14 @@ function buildSaeediResponse(
     deliveryCompany:
       "الصاعدي",
 
-    trackingNumber: "",
-    trackingUrl: "",
-    shipmentId: "",
+    trackingNumber:
+      "",
+
+    trackingUrl:
+      "",
+
+    shipmentId:
+      "",
 
     packageCount:
       null,
@@ -528,7 +540,7 @@ function normalize(value) {
 
 
 // ==================================================
-// حالات سلة
+// حالة سلة
 // ==================================================
 
 function classifySallaStatus(status) {
@@ -558,7 +570,7 @@ function classifySallaStatus(status) {
 
 
 // ==================================================
-// حالات OTO
+// حالة OTO
 // ==================================================
 
 function classifyOtoStatus(
@@ -593,7 +605,7 @@ function classifyOtoStatus(
 
 
 // ==================================================
-// حالة البحث المباشر برقم التتبع
+// التتبع المباشر
 // ==================================================
 
 function classifyTrackingStage(
@@ -617,14 +629,12 @@ function classifyTrackingStage(
     return 4;
   }
 
-  // إذا trackShipment رجع شحنة حقيقية
-  // فهي في مرحلة الشحن على الأقل
   return 3;
 }
 
 
 // ==================================================
-// نصوص الواجهة
+// بيانات الواجهة
 // ==================================================
 
 function uiForStage(stage) {
@@ -909,10 +919,6 @@ async function getOtoOrder(
         `Bearer ${accessToken}`
     };
 
-    // ==================================================
-    // حالة الطلب
-    // ==================================================
-
     const statusResponse =
       await fetch(
         "https://api.tryoto.com/rest/v2/orderStatus",
@@ -941,11 +947,8 @@ async function getOtoOrder(
       return null;
     }
 
-    // ==================================================
-    // تفاصيل الطلب
-    // ==================================================
-
-    let detailsData = {};
+    let detailsData =
+      {};
 
     try {
       const detailsResponse =
@@ -965,10 +968,6 @@ async function getOtoOrder(
         );
 
     } catch {}
-
-    // ==================================================
-    // نتأكد أن الرد يخص نفس الطلب
-    // ==================================================
 
     const returnedOrderId =
       firstValue(
@@ -998,10 +997,6 @@ async function getOtoOrder(
       return null;
     }
 
-    // ==================================================
-    // الحالة
-    // ==================================================
-
     const status =
       firstValue(
         statusData,
@@ -1020,10 +1015,6 @@ async function getOtoOrder(
         ]
       );
 
-    // ==================================================
-    // shipmentId
-    // ==================================================
-
     const shipmentId =
       firstValue(
         statusData,
@@ -1039,10 +1030,6 @@ async function getOtoOrder(
           "awbNumber"
         ]
       );
-
-    // ==================================================
-    // trackingNumber
-    // ==================================================
 
     let trackingNumber =
       firstValue(
@@ -1060,7 +1047,6 @@ async function getOtoOrder(
         ]
       );
 
-    // بعض طلبات أرامكس يكون رقم التتبع داخل shipmentId
     if (
       !trackingNumber &&
       isPossibleTrackingNumber(
@@ -1068,12 +1054,10 @@ async function getOtoOrder(
       )
     ) {
       trackingNumber =
-        String(shipmentId);
+        String(
+          shipmentId
+        );
     }
-
-    // ==================================================
-    // شركة الشحن
-    // ==================================================
 
     const deliveryCompany =
       firstValue(
@@ -1093,10 +1077,6 @@ async function getOtoOrder(
         ]
       );
 
-    // ==================================================
-    // رابط التتبع
-    // ==================================================
-
     const trackingUrl =
       firstValue(
         statusData,
@@ -1113,7 +1093,6 @@ async function getOtoOrder(
         ]
       );
 
-    // احتياط: نستخرج رقم التتبع من رابط أرامكس
     if (
       !trackingNumber &&
       trackingUrl
@@ -1147,11 +1126,8 @@ async function getOtoOrder(
       return null;
     }
 
-    // ==================================================
-    // تاريخ الطلب
-    // ==================================================
-
-    let historyData = {};
+    let historyData =
+      {};
 
     try {
       const historyResponse =
@@ -1232,7 +1208,9 @@ async function getOtoOrder(
 function extractTrackingFromUrl(url) {
   try {
     const value =
-      String(url || "");
+      String(
+        url || ""
+      );
 
     const match =
       value.match(
@@ -1322,7 +1300,6 @@ async function trackShipment(
         ? data.items
         : [];
 
-    // لا نقبل trackingUrl وحده
     if (!items.length) {
       return null;
     }
@@ -1382,13 +1359,11 @@ async function trackShipment(
           item.shipmentId
         );
 
-    if (!normalizedItems.length) {
+    if (
+      !normalizedItems.length
+    ) {
       return null;
     }
-
-    // ==================================================
-    // نتأكد أن التحديثات تخص نفس رقم التتبع
-    // ==================================================
 
     const returnedNumbers =
       normalizedItems
@@ -1414,10 +1389,6 @@ async function trackShipment(
     ) {
       return null;
     }
-
-    // ==================================================
-    // ترتيب الأحدث أولاً
-    // ==================================================
 
     normalizedItems.sort(
       (a, b) => {
@@ -1446,21 +1417,8 @@ async function trackShipment(
       normalizedItems[0] ||
       {};
 
-    // ==================================================
-    // الإصلاح المهم
-    //
-    // سابقاً كنا نسمح فقط بأسماء حالات محددة.
-    // الآن trackShipment جاي من الناقل نفسه،
-    // لذلك نعرض كل تحديث فعلي ونحذف فقط
-    // تحديثات OTO الإدارية.
-    //
-    // بهذا تظهر حالات مثل:
-    // arrivedDestinationTerminal
-    // departedOriginTerminal
-    // arrivedOriginTerminal
-    // وأي حالات جديدة من أرامكس مستقبلاً.
-    // ==================================================
-
+    // نخلي تحديثات أرامكس الفعلية
+    // ونحذف تحديثات OTO الإدارية فقط
     const carrierHistory =
       normalizedItems
         .filter(item => {
@@ -1471,7 +1429,10 @@ async function trackShipment(
             combined
           );
         })
-        .slice(0, 20);
+        .slice(
+          0,
+          30
+        );
 
     return {
       trackingNumber:
@@ -1513,7 +1474,7 @@ async function trackShipment(
 
 
 // ==================================================
-// تحديثات OTO عند عدم توفر trackShipment
+// سجل OTO
 // ==================================================
 
 function buildCarrierHistory(oto) {
@@ -1528,8 +1489,6 @@ function buildCarrierHistory(oto) {
       ? [...oto.history]
       : [];
 
-  // إذا ما فيه history لكن الحالة الحالية
-  // فعلاً حالة شحن نعرضها كتحديث
   if (
     isCarrierEvent(
       `${oto.dcStatus || ""} ${oto.status || ""}`
@@ -1541,6 +1500,10 @@ function buildCarrierHistory(oto) {
         oto.status ||
         "",
 
+      dcStatus:
+        oto.dcStatus ||
+        "",
+
       date:
         oto.date ||
         "",
@@ -1550,13 +1513,10 @@ function buildCarrierHistory(oto) {
     });
   }
 
-  const seen =
-    new Set();
-
   return events
     .filter(item => {
       const combined =
-        `${item?.status || ""} ${item?.description || ""}`;
+        `${item?.status || ""} ${item?.dcStatus || ""} ${item?.description || ""}`;
 
       if (
         isInternalOtoEvent(
@@ -1566,33 +1526,205 @@ function buildCarrierHistory(oto) {
         return false;
       }
 
-      if (
-        !isCarrierEvent(
-          combined
-        )
-      ) {
-        return false;
-      }
-
-      const key =
-        `${item?.status || ""}|${item?.date || ""}|${item?.description || ""}`;
-
-      if (
-        seen.has(key)
-      ) {
-        return false;
-      }
-
-      seen.add(key);
-
-      return true;
-    })
-    .slice(0, 12);
+      return isCarrierEvent(
+        combined
+      );
+    });
 }
 
 
 // ==================================================
-// حالات الشحن الفعلية
+// دمج السجلين
+// ==================================================
+
+function mergeHistories(
+  shipmentHistory,
+  otoHistory
+) {
+  const combined = [
+    ...(Array.isArray(shipmentHistory)
+      ? shipmentHistory
+      : []),
+
+    ...(Array.isArray(otoHistory)
+      ? otoHistory
+      : [])
+  ];
+
+  const seen =
+    new Set();
+
+  const result =
+    [];
+
+  for (
+    const item
+    of combined
+  ) {
+    if (!item) {
+      continue;
+    }
+
+    const status =
+      String(
+        item.status ||
+        item.otoStatus ||
+        item.dcStatus ||
+        ""
+      ).trim();
+
+    const dcStatus =
+      String(
+        item.dcStatus ||
+        ""
+      ).trim();
+
+    const date =
+      String(
+        item.date ||
+        item.dcUpdateDate ||
+        item.updateDate ||
+        ""
+      ).trim();
+
+    const description =
+      redactPII(
+        String(
+          item.description ||
+          item.dcDescription ||
+          ""
+        )
+      );
+
+    if (
+      !status &&
+      !dcStatus &&
+      !description
+    ) {
+      continue;
+    }
+
+    const combinedText =
+      `${status} ${dcStatus} ${description}`;
+
+    if (
+      isInternalOtoEvent(
+        combinedText
+      )
+    ) {
+      continue;
+    }
+
+    // مفتاح لمنع التكرار
+    const key =
+      [
+        normalize(status),
+        normalize(dcStatus),
+        normalize(description),
+        normalizeDateKey(date)
+      ].join("|");
+
+    if (
+      seen.has(key)
+    ) {
+      continue;
+    }
+
+    seen.add(key);
+
+    result.push({
+      status,
+
+      dcStatus,
+
+      date,
+
+      description,
+
+      shipmentId:
+        String(
+          item.shipmentId ||
+          ""
+        ),
+
+      trackingNumber:
+        String(
+          item.trackingNumber ||
+          ""
+        )
+    });
+  }
+
+  result.sort(
+    (a, b) => {
+      const da =
+        new Date(
+          a.date
+        ).getTime();
+
+      const db =
+        new Date(
+          b.date
+        ).getTime();
+
+      if (
+        Number.isNaN(da) &&
+        Number.isNaN(db)
+      ) {
+        return 0;
+      }
+
+      if (
+        Number.isNaN(da)
+      ) {
+        return 1;
+      }
+
+      if (
+        Number.isNaN(db)
+      ) {
+        return -1;
+      }
+
+      return db - da;
+    }
+  );
+
+  return result.slice(
+    0,
+    30
+  );
+}
+
+
+function normalizeDateKey(value) {
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return String(
+      value || ""
+    );
+  }
+
+  // تقريب للدقيقة لمنع تكرار نفس الحدث
+  date.setSeconds(
+    0,
+    0
+  );
+
+  return date.toISOString();
+}
+
+
+// ==================================================
+// حالات الشحن
 // ==================================================
 
 function isCarrierEvent(value) {
@@ -1603,11 +1735,11 @@ function isCarrierEvent(value) {
     /picked.?up/.test(s) ||
     /pickup/.test(s) ||
     /collected/.test(s) ||
+
     /received.?by.?carrier/.test(s) ||
     /carrier.?received/.test(s) ||
     /accepted.?by.?carrier/.test(s) ||
 
-    // محطات أرامكس
     /arrived.?terminal/.test(s) ||
     /departed.?terminal/.test(s) ||
 
@@ -1623,14 +1755,12 @@ function isCarrierEvent(value) {
     /arrived.?facility/.test(s) ||
     /departed.?facility/.test(s) ||
 
-    // أثناء النقل
     /in.?transit/.test(s) ||
     /\btransit\b/.test(s) ||
     /departed/.test(s) ||
-    /forwarded/.test(s) ||
     /moving/.test(s) ||
+    /forwarded/.test(s) ||
 
-    // التوصيل
     /with.?courier/.test(s) ||
     /out.?for.?delivery/.test(s) ||
 
@@ -1639,14 +1769,13 @@ function isCarrierEvent(value) {
 
     /delivered/.test(s) ||
 
-    // مشاكل أو إرجاع
     /returned/.test(s) ||
     /return.?to.?sender/.test(s) ||
+
     /delivery.?exception/.test(s) ||
     /undeliverable/.test(s) ||
     /on.?hold/.test(s) ||
 
-    // عربي
     /استلمت.*شركه.*الشحن/.test(s) ||
     /استلام.*شركه.*الشحن/.test(s) ||
     /استلم.*الناقل/.test(s) ||
@@ -1663,6 +1792,7 @@ function isCarrierEvent(value) {
     /في.*الطريق/.test(s) ||
     /جاري.*التوصيل/.test(s) ||
     /خرجت.*للتسليم/.test(s) ||
+
     /محاوله.*تسليم/.test(s) ||
     /تم.*التسليم/.test(s)
   );
@@ -1670,7 +1800,7 @@ function isCarrierEvent(value) {
 
 
 // ==================================================
-// تحديثات OTO الداخلية التي لا نريد عرضها
+// تحديثات OTO الإدارية
 // ==================================================
 
 function isInternalOtoEvent(value) {
@@ -1787,7 +1917,10 @@ function normalizeId(value) {
     value || ""
   )
     .trim()
-    .replace(/\s+/g, "");
+    .replace(
+      /\s+/g,
+      ""
+    );
 }
 
 
@@ -1900,7 +2033,9 @@ function findNumericField(
   }
 
   const number =
-    Number(value);
+    Number(
+      value
+    );
 
   return Number.isFinite(
     number
@@ -1911,7 +2046,7 @@ function findNumericField(
 
 
 // ==================================================
-// تاريخ OTO
+// سجل OTO
 // ==================================================
 
 function normalizeHistory(raw) {
@@ -1951,6 +2086,14 @@ function normalizeHistory(raw) {
             "state",
             "action",
             "otoStatus"
+          ]
+        );
+
+      const dcStatus =
+        pick(
+          item,
+          [
+            "dcStatus"
           ]
         );
 
@@ -1994,6 +2137,12 @@ function normalizeHistory(raw) {
             ""
           ),
 
+        dcStatus:
+          String(
+            dcStatus ||
+            ""
+          ),
+
         date:
           String(
             date ||
@@ -2004,7 +2153,10 @@ function normalizeHistory(raw) {
       };
     })
     .filter(Boolean)
-    .slice(0, 60);
+    .slice(
+      0,
+      60
+    );
 }
 
 
@@ -2088,7 +2240,7 @@ function pick(
 
 
 // ==================================================
-// إزالة البيانات الحساسة من وصف الناقل
+// حماية البيانات
 // ==================================================
 
 function redactPII(value) {
@@ -2098,14 +2250,12 @@ function redactPII(value) {
       ""
     );
 
-  // رقم جوال سعودي
   text =
     text.replace(
       /\b(?:\+?966|0)?5\d{8}\b/g,
       ""
     );
 
-  // أرقام طويلة أخرى
   text =
     text.replace(
       /\b\d{9,12}\b/g,
