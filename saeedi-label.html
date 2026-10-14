@@ -1,535 +1,758 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shipping Label</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipping Label</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<style>
+*{
+  box-sizing:border-box;
+}
 
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      background: #ecebea;
-      font-family: Arial, Tahoma, sans-serif;
-      color: #140d09;
-    }
+html,body{
+  margin:0;
+  padding:0;
+  background:#ece9e5;
+  font-family:Arial,Tahoma,sans-serif;
+}
 
-    .toolbar {
-      background: white;
-      text-align: center;
-      padding: 10px;
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      border-bottom: 1px solid #ddd;
-    }
+.toolbar{
+  background:#fff;
+  text-align:center;
+  padding:10px;
+  position:sticky;
+  top:0;
+  z-index:100;
+}
 
-    .print-btn {
-      border: 0;
-      background: #2b190f;
-      color: white;
-      padding: 10px 24px;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-    }
+.print-btn{
+  border:0;
+  background:#342015;
+  color:#fff;
+  padding:11px 25px;
+  border-radius:8px;
+  font-weight:700;
+  cursor:pointer;
+}
 
-    #app {
-      width: 4in;
-      margin: 16px auto;
-    }
+#app{
+  width:4in;
+  margin:15px auto;
+}
 
-    .shipping-label {
-      width: 4in;
-      height: 6in;
-      background: #fff;
-      border: 2px solid #24150e;
-      border-radius: 10px;
-      padding: 0.11in;
-      overflow: hidden;
-      margin-bottom: 18px;
-      page-break-after: always;
-    }
+.label{
+  position:relative;
 
-    .header {
-      display: grid;
-      grid-template-columns: 0.92in 1px 1fr;
-      gap: 0.11in;
-      align-items: center;
-      min-height: 1.08in;
-    }
+  width:4in;
+  height:6in;
 
-    .package-box {
-      height: 0.93in;
-      border: 2px solid #2c1a10;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #faf5ee, #f3e8d8);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      direction: ltr;
-    }
+  background:#fffdf9;
+  overflow:hidden;
 
-    .package-icon {
-      font-size: 23px;
-      line-height: 1;
-      margin-bottom: 3px;
-    }
+  margin-bottom:18px;
 
-    .package-count {
-      font-size: 27px;
-      font-weight: 900;
-      line-height: 1;
-    }
+  border:2px solid #3b261b;
+  border-radius:11px;
 
-    .vertical-line {
-      height: 0.85in;
-      background: #8a5c38;
-      width: 1px;
-    }
+  page-break-after:always;
+}
 
-    .brand-area {
-      text-align: right;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
+/* =========================
+   HEADER
+========================= */
 
-    .brand-row {
-      display: flex;
-      justify-content: flex-start;
-      align-items: center;
-    }
+.packageBlock{
+  position:absolute;
 
-    .brand-name {
-      font-size: 28px;
-      font-weight: 900;
-      color: #24140d;
-    }
+  left:14px;
+  top:14px;
 
-    .carrier-name {
-      font-size: 14px;
-      font-weight: 700;
-      margin-top: 4px;
-    }
+  width:88px;
+  height:92px;
 
-    .divider {
-      margin: 0.08in 0 0.10in;
-      display: flex;
-      gap: 3px;
-      direction: ltr;
-    }
+  border:2px solid #3c281d;
+  border-radius:8px;
 
-    .divider .short {
-      width: 0.38in;
-      height: 3px;
-      background: #9b6a3d;
-      border-radius: 10px;
-    }
+  background:#f6eee4;
 
-    .divider .long {
-      flex: 1;
-      height: 3px;
-      background: #2c211d;
-      border-radius: 10px;
-    }
+  text-align:center;
+}
 
-    .order-box {
-      border: 1.7px solid #2b190f;
-      border-radius: 7px;
-      background: linear-gradient(90deg, #fff 0%, #faf5ef 100%);
-      min-height: 0.62in;
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      align-items: center;
-      gap: 7px;
-      padding: 0.07in;
-      margin-bottom: 0.08in;
-    }
+.packageIcon{
+  margin-top:9px;
+  font-size:25px;
+  color:#473027;
+}
 
-    .order-number {
-      font-size: 20px;
-      font-weight: 900;
-      direction: ltr;
-      text-align: center;
-    }
+.packageCount{
+  direction:ltr;
+  font-size:31px;
+  font-weight:900;
+  margin-top:2px;
+}
 
-    .order-title {
-      font-size: 13px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
+.headerDivider{
+  position:absolute;
 
-    .icon-box {
-      width: 0.32in;
-      height: 0.32in;
-      background: linear-gradient(135deg, #8a5a34, #56301c);
-      border-radius: 5px;
-      color: white;
-      display: grid;
-      place-items: center;
-      font-size: 16px;
-    }
+  left:112px;
+  top:19px;
 
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.07in;
-    }
+  width:1px;
+  height:82px;
 
-    .info-card {
-      border: 1.5px solid #2b190f;
-      border-radius: 7px;
-      overflow: hidden;
-      background: white;
-      min-height: 0.74in;
-    }
+  background:#aa805f;
+}
 
-    .info-head {
-      background: linear-gradient(90deg, #fff 0%, #f5ecdf 100%);
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 5px;
-      align-items: center;
-      padding: 0.045in 0.055in;
-      min-height: 0.30in;
-    }
+.brand{
+  position:absolute;
 
-    .info-title {
-      font-size: 11px;
-      font-weight: 700;
-    }
+  right:20px;
+  top:27px;
 
-    .info-value {
-      min-height: 0.38in;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      padding: 0.04in 0.065in;
-      font-size: 15px;
-      font-weight: 900;
-    }
+  font-size:32px;
+  font-weight:900;
 
-    .full-card {
-      grid-column: 1 / -1;
-    }
+  color:#291a13;
+}
 
-    .product-value {
-      font-size: 16px;
-    }
+.carrier{
+  position:absolute;
 
-    .paid-value {
-      font-size: 25px;
-      font-weight: 900;
-    }
+  right:20px;
+  top:69px;
 
-    .status-card {
-      position: relative;
-      overflow: hidden;
-    }
+  font-size:14px;
+  font-weight:700;
 
-    .watermark {
-      position: absolute;
-      left: 8px;
-      bottom: 2px;
-      font-size: 50px;
-      opacity: 0.08;
-      direction: ltr;
-    }
+  color:#3b2b23;
+}
 
-    .footer-divider {
-      margin-top: 0.08in;
-      display: flex;
-      gap: 3px;
-      direction: ltr;
-    }
+/* =========================
+   MAIN DIVIDER
+========================= */
 
-    .footer-divider .short {
-      width: 0.38in;
-      height: 3px;
-      background: #9b6a3d;
-    }
+.lineBrown{
+  position:absolute;
 
-    .footer-divider .long {
-      flex: 1;
-      height: 3px;
-      background: #2c211d;
-    }
+  left:16px;
+  top:118px;
 
-    .footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      direction: ltr;
-      margin-top: 0.04in;
-      font-weight: 900;
-    }
+  width:39px;
+  height:4px;
 
-    .footer-package {
-      font-size: 14px;
-    }
+  border-radius:5px;
 
-    .footer-brand {
-      direction: rtl;
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-    }
+  background:#a77d5c;
+}
 
-    .error {
-      background: white;
-      padding: 30px;
-      text-align: center;
-    }
+.lineBlack{
+  position:absolute;
 
-    @media print {
-      @page {
-        size: 4in 6in;
-        margin: 0;
-      }
+  left:59px;
+  right:16px;
+  top:118px;
 
-      html,
-      body {
-        width: 4in;
-        margin: 0;
-        padding: 0;
-        background: white;
-      }
+  height:4px;
 
-      .toolbar {
-        display: none !important;
-      }
+  border-radius:5px;
 
-      #app {
-        width: 4in;
-        margin: 0;
-      }
+  background:#36271f;
+}
 
-      .shipping-label {
-        width: 4in;
-        height: 6in;
-        margin: 0;
-        border-radius: 0;
-        page-break-after: always;
-        break-after: page;
-      }
+/* =========================
+   ORDER
+========================= */
 
-      .shipping-label:last-child {
-        page-break-after: auto;
-        break-after: auto;
-      }
-    }
-  </style>
+.orderBox{
+  position:absolute;
+
+  left:15px;
+  right:15px;
+  top:136px;
+
+  height:60px;
+
+  border:2px solid #3a281e;
+  border-radius:8px;
+
+  background:#faf5ee;
+}
+
+.orderIcon{
+  position:absolute;
+
+  right:8px;
+  top:10px;
+
+  width:38px;
+  height:38px;
+
+  background:#825635;
+
+  border-radius:5px;
+
+  color:white;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  font-size:20px;
+}
+
+.orderLabel{
+  position:absolute;
+
+  right:57px;
+  top:19px;
+
+  font-size:13px;
+  font-weight:700;
+}
+
+.orderNumber{
+  position:absolute;
+
+  left:20px;
+  right:120px;
+  top:12px;
+
+  text-align:center;
+
+  direction:ltr;
+
+  font-size:24px;
+  font-weight:900;
+}
+
+/* =========================
+   INFO GRID
+========================= */
+
+.card{
+  position:absolute;
+
+  border:1.8px solid #3b281e;
+  border-radius:8px;
+
+  overflow:hidden;
+
+  background:white;
+}
+
+.cardHeader{
+  height:31px;
+
+  background:#f5ecdf;
+
+  border-bottom:1px solid #d9c6b4;
+
+  display:flex;
+  align-items:center;
+
+  padding-right:41px;
+
+  font-size:12px;
+  font-weight:700;
+}
+
+.cardIcon{
+  position:absolute;
+
+  right:0;
+  top:0;
+
+  width:34px;
+  height:31px;
+
+  background:#875a38;
+
+  color:white;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  font-size:17px;
+}
+
+.cardValue{
+  height:43px;
+
+  display:flex;
+  align-items:center;
+
+  padding:5px 10px;
+
+  font-size:16px;
+  font-weight:900;
+}
+
+/* CUSTOMER */
+
+.customer{
+  right:15px;
+  top:208px;
+
+  width:171px;
+  height:75px;
+}
+
+.phone{
+  left:15px;
+  top:208px;
+
+  width:171px;
+  height:75px;
+}
+
+/* CITY */
+
+.city{
+  right:15px;
+  top:292px;
+
+  width:171px;
+  height:75px;
+}
+
+.company{
+  left:15px;
+  top:292px;
+
+  width:171px;
+  height:75px;
+}
+
+/* PRODUCT */
+
+.product{
+  left:15px;
+  right:15px;
+  top:376px;
+
+  height:78px;
+}
+
+.product .cardValue{
+  font-size:17px;
+}
+
+/* STATUS */
+
+.status{
+  left:15px;
+  right:15px;
+  top:463px;
+
+  height:82px;
+}
+
+.status .cardValue{
+  font-size:28px;
+}
+
+.watermark{
+  position:absolute;
+
+  left:18px;
+  bottom:1px;
+
+  font-size:48px;
+
+  opacity:0.08;
+}
+
+/* =========================
+   FOOTER
+========================= */
+
+.footerBrown{
+  position:absolute;
+
+  left:16px;
+  bottom:38px;
+
+  width:39px;
+  height:4px;
+
+  background:#a77d5c;
+
+  border-radius:5px;
+}
+
+.footerBlack{
+  position:absolute;
+
+  left:59px;
+  right:16px;
+  bottom:38px;
+
+  height:4px;
+
+  background:#36271f;
+
+  border-radius:5px;
+}
+
+.footerPackage{
+  position:absolute;
+
+  left:18px;
+  bottom:13px;
+
+  font-size:14px;
+  font-weight:900;
+
+  direction:ltr;
+}
+
+.footerBrand{
+  position:absolute;
+
+  right:18px;
+  bottom:11px;
+
+  font-size:14px;
+  font-weight:900;
+}
+
+/* =========================
+   PRINT
+========================= */
+
+@media print{
+
+  @page{
+    size:4in 6in;
+    margin:0;
+  }
+
+  html,
+  body{
+    width:4in;
+    margin:0;
+    padding:0;
+    background:#fff;
+  }
+
+  .toolbar{
+    display:none !important;
+  }
+
+  #app{
+    width:4in;
+    margin:0;
+  }
+
+  .label{
+    width:4in;
+    height:6in;
+
+    margin:0;
+
+    border-radius:0;
+
+    break-after:page;
+    page-break-after:always;
+  }
+
+  .label:last-child{
+    break-after:auto;
+    page-break-after:auto;
+  }
+}
+
+.error{
+  background:#fff;
+  padding:25px;
+  text-align:center;
+}
+</style>
 </head>
 
 <body>
 
-  <div class="toolbar">
-    <button class="print-btn" onclick="window.print()">
-      طباعة البوالص
-    </button>
-  </div>
+<div class="toolbar">
 
-  <main id="app">
-    جاري تحميل البوالص...
-  </main>
+<button
+  class="print-btn"
+  onclick="window.print()">
 
-  <script>
-    async function loadLabels() {
-      const params = new URLSearchParams(window.location.search);
-      const order = params.get("order");
-      const app = document.getElementById("app");
+  طباعة البوالص
 
-      if (!order) {
-        app.innerHTML =
-          '<div class="error">رقم الطلب غير موجود</div>';
-        return;
-      }
+</button>
 
-      try {
-        const response = await fetch(
-          `/api/saeedi-label?order=${encodeURIComponent(order)}`
-        );
+</div>
 
-        const data = await response.json();
+<main id="app">
+جاري تحميل البوالص...
+</main>
 
-        if (!response.ok || !data.ok) {
-          app.innerHTML =
-            `<div class="error">${escapeHtml(data.error || "تعذر تحميل البوالص")}</div>`;
-          return;
-        }
+<script>
 
-        app.innerHTML = "";
+async function loadLabels(){
 
-        data.labels.forEach(label => {
-          const section = document.createElement("section");
+  const params =
+    new URLSearchParams(
+      window.location.search
+    );
 
-          section.className = "shipping-label";
+  const order =
+    params.get("order");
 
-          section.innerHTML = `
-            <div class="header">
+  const app =
+    document.getElementById("app");
 
-              <div class="package-box">
-                <div class="package-icon">⬡</div>
-                <div class="package-count">
-                  ${escapeHtml(label.package)}
-                </div>
-              </div>
+  if(!order){
 
-              <div class="vertical-line"></div>
+    app.innerHTML =
+      '<div class="error">رقم الطلب غير موجود</div>';
 
-              <div class="brand-area">
-                <div class="brand-row">
-                  <div class="brand-name">النواق</div>
-                </div>
+    return;
+  }
 
-                <div class="carrier-name">
-                  الناقل: الصاعدي
-                </div>
-              </div>
+  try{
 
-            </div>
+    const response =
+      await fetch(
+        `/api/saeedi-label?order=${encodeURIComponent(order)}`
+      );
 
-            <div class="divider">
-              <span class="short"></span>
-              <span class="long"></span>
-            </div>
+    const data =
+      await response.json();
 
-            <div class="order-box">
+    if(!response.ok || !data.ok){
 
-              <div class="order-number">
-                ${escapeHtml(label.orderNumber)}
-              </div>
+      app.innerHTML =
+        `<div class="error">${
+          escapeHtml(
+            data.error ||
+            "تعذر تحميل البوليصة"
+          )
+        }</div>`;
 
-              <div class="order-title">
-                رقم الطلب:
-              </div>
-
-              <div class="icon-box">
-                ▣
-              </div>
-
-            </div>
-
-            <div class="info-grid">
-
-              <div class="info-card">
-                <div class="info-head">
-                  <div class="info-title">رقم الجوال</div>
-                  <div class="icon-box">▯</div>
-                </div>
-
-                <div class="info-value" dir="ltr">
-                  ${escapeHtml(label.mobile || "-")}
-                </div>
-              </div>
-
-              <div class="info-card">
-                <div class="info-head">
-                  <div class="info-title">اسم العميل</div>
-                  <div class="icon-box">●</div>
-                </div>
-
-                <div class="info-value">
-                  ${escapeHtml(label.customerName || "-")}
-                </div>
-              </div>
-
-              <div class="info-card">
-                <div class="info-head">
-                  <div class="info-title">شركة الشحن</div>
-                  <div class="icon-box">▰</div>
-                </div>
-
-                <div class="info-value">
-                  الصاعدي
-                </div>
-              </div>
-
-              <div class="info-card">
-                <div class="info-head">
-                  <div class="info-title">المدينة</div>
-                  <div class="icon-box">●</div>
-                </div>
-
-                <div class="info-value">
-                  ${escapeHtml(label.city || "-")}
-                </div>
-              </div>
-
-              <div class="info-card full-card">
-                <div class="info-head">
-                  <div class="info-title">محتوى الشحنة</div>
-                  <div class="icon-box">⬡</div>
-                </div>
-
-                <div class="info-value product-value">
-                  ${escapeHtml(label.product || "-")}
-                </div>
-              </div>
-
-              <div class="info-card full-card status-card">
-                <div class="info-head">
-                  <div class="info-title">حالة الشحن</div>
-                  <div class="icon-box">▤</div>
-                </div>
-
-                <div class="info-value paid-value">
-                  مدفوع
-                </div>
-
-                <div class="watermark">
-                  📦 ➜
-                </div>
-              </div>
-
-            </div>
-
-            <div class="footer-divider">
-              <span class="short"></span>
-              <span class="long"></span>
-            </div>
-
-            <div class="footer">
-
-              <div class="footer-package">
-                ${escapeHtml(label.package)}
-              </div>
-
-              <div class="footer-brand">
-                <span>النواق</span>
-              </div>
-
-            </div>
-          `;
-
-          app.appendChild(section);
-        });
-
-      } catch (error) {
-        app.innerHTML =
-          '<div class="error">حدث خطأ أثناء تحميل البوليصة</div>';
-      }
+      return;
     }
 
-    function escapeHtml(value) {
-      return String(value || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
+    app.innerHTML = "";
 
-    loadLabels();
-  </script>
+    data.labels.forEach(label=>{
+
+      const el =
+        document.createElement("section");
+
+      el.className =
+        "label";
+
+      el.innerHTML = `
+
+        <div class="packageBlock">
+
+          <div class="packageIcon">
+            📦
+          </div>
+
+          <div class="packageCount">
+            ${escapeHtml(label.package)}
+          </div>
+
+        </div>
+
+        <div class="headerDivider"></div>
+
+        <div class="brand">
+          النواق
+        </div>
+
+        <div class="carrier">
+          الناقل: الصاعدي
+        </div>
+
+        <div class="lineBrown"></div>
+        <div class="lineBlack"></div>
+
+
+        <div class="orderBox">
+
+          <div class="orderIcon">
+            ▣
+          </div>
+
+          <div class="orderLabel">
+            رقم الطلب:
+          </div>
+
+          <div class="orderNumber">
+            ${escapeHtml(label.orderNumber)}
+          </div>
+
+        </div>
+
+
+        <div class="card customer">
+
+          <div class="cardIcon">
+            👤
+          </div>
+
+          <div class="cardHeader">
+            اسم العميل
+          </div>
+
+          <div class="cardValue">
+            ${escapeHtml(
+              label.customerName || "-"
+            )}
+          </div>
+
+        </div>
+
+
+        <div class="card phone">
+
+          <div class="cardIcon">
+            ☎
+          </div>
+
+          <div class="cardHeader">
+            رقم الجوال
+          </div>
+
+          <div
+            class="cardValue"
+            dir="ltr">
+
+            ${escapeHtml(
+              label.mobile || "-"
+            )}
+
+          </div>
+
+        </div>
+
+
+        <div class="card city">
+
+          <div class="cardIcon">
+            ●
+          </div>
+
+          <div class="cardHeader">
+            المدينة
+          </div>
+
+          <div class="cardValue">
+            ${escapeHtml(
+              label.city || "-"
+            )}
+          </div>
+
+        </div>
+
+
+        <div class="card company">
+
+          <div class="cardIcon">
+            🚚
+          </div>
+
+          <div class="cardHeader">
+            شركة الشحن
+          </div>
+
+          <div class="cardValue">
+            الصاعدي
+          </div>
+
+        </div>
+
+
+        <div class="card product">
+
+          <div class="cardIcon">
+            📦
+          </div>
+
+          <div class="cardHeader">
+            محتوى الشحنة
+          </div>
+
+          <div class="cardValue">
+
+            ${escapeHtml(
+              label.product || "-"
+            )}
+
+          </div>
+
+        </div>
+
+
+        <div class="card status">
+
+          <div class="cardIcon">
+            ▤
+          </div>
+
+          <div class="cardHeader">
+            حالة الشحن
+          </div>
+
+          <div class="cardValue">
+            مدفوع
+          </div>
+
+          <div class="watermark">
+            📦
+          </div>
+
+        </div>
+
+
+        <div class="footerBrown"></div>
+        <div class="footerBlack"></div>
+
+        <div class="footerPackage">
+          ${escapeHtml(label.package)}
+        </div>
+
+        <div class="footerBrand">
+          النواق
+        </div>
+
+      `;
+
+      app.appendChild(el);
+
+    });
+
+  }catch(error){
+
+    app.innerHTML =
+      '<div class="error">حدث خطأ أثناء تحميل البوليصة</div>';
+
+  }
+
+}
+
+
+function escapeHtml(value){
+
+  return String(value || "")
+
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
+
+
+loadLabels();
+
+</script>
 
 </body>
 </html>
