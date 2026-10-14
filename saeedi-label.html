@@ -12,163 +12,216 @@
 
     body {
       margin: 0;
-      background: #f3f3f3;
+      background: #ececec;
       font-family: Arial, sans-serif;
       color: #111;
     }
 
     .toolbar {
-      padding: 14px;
-      text-align: center;
-      background: #fff;
-      border-bottom: 1px solid #ddd;
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 20;
+      background: #fff;
+      padding: 12px;
+      text-align: center;
+      border-bottom: 1px solid #ccc;
     }
 
     .print-btn {
       border: 0;
       background: #111;
       color: #fff;
-      padding: 12px 24px;
-      border-radius: 8px;
       font-size: 16px;
+      font-weight: 700;
+      padding: 12px 26px;
+      border-radius: 8px;
       cursor: pointer;
     }
 
     .container {
       max-width: 900px;
-      margin: 20px auto;
+      margin: 24px auto;
     }
 
     .label {
       width: 100%;
-      min-height: 520px;
       background: #fff;
-      margin-bottom: 20px;
-      padding: 28px;
       border: 2px solid #111;
+      margin-bottom: 24px;
+      padding: 26px;
       page-break-after: always;
     }
 
-    .header {
+    .top {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 24px;
+      align-items: stretch;
+      border-bottom: 4px solid #111;
+      padding-bottom: 18px;
+      margin-bottom: 18px;
+    }
+
+    .piece-box {
+      border: 4px solid #111;
       display: flex;
-      justify-content: space-between;
+      align-items: center;
+      justify-content: center;
+      font-size: 54px;
+      font-weight: 900;
+      min-height: 130px;
+    }
+
+    .brand-area {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
       align-items: flex-start;
-      border-bottom: 3px solid #111;
-      padding-bottom: 15px;
-      margin-bottom: 20px;
     }
 
     .brand {
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 34px;
+      font-weight: 900;
+      margin-bottom: 8px;
     }
 
     .carrier {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 700;
     }
 
-    .package-number {
-      font-size: 44px;
-      font-weight: 800;
-      border: 3px solid #111;
-      padding: 8px 18px;
-      min-width: 110px;
-      text-align: center;
+    .order-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #111;
+      padding: 14px 0;
+      margin-bottom: 18px;
+      gap: 20px;
+    }
+
+    .order-title {
+      font-size: 18px;
+      font-weight: 700;
     }
 
     .order-number {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 20px;
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 1px;
     }
 
-    .grid {
+    .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      gap: 12px;
     }
 
-    .field {
-      border: 1.5px solid #111;
-      padding: 13px;
-      min-height: 70px;
+    .box {
+      border: 2px solid #111;
+      padding: 14px;
+      min-height: 92px;
     }
 
-    .field.full {
+    .box.full {
       grid-column: 1 / -1;
     }
 
-    .label-title {
+    .box-title {
       font-size: 13px;
       font-weight: 700;
-      margin-bottom: 7px;
       color: #555;
+      margin-bottom: 8px;
     }
 
-    .value {
-      font-size: 20px;
-      font-weight: 700;
+    .box-value {
+      font-size: 23px;
+      font-weight: 800;
     }
 
     .paid {
+      font-size: 38px;
+      font-weight: 900;
+    }
+
+    .shipment-content {
       font-size: 28px;
       font-weight: 900;
     }
 
     .footer {
-      margin-top: 24px;
-      border-top: 2px solid #111;
+      margin-top: 18px;
       padding-top: 14px;
+      border-top: 3px solid #111;
       display: flex;
       justify-content: space-between;
-      font-weight: 700;
+      align-items: center;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .footer-piece {
+      font-size: 26px;
+      font-weight: 900;
     }
 
     .error {
       background: #fff;
+      border: 1px solid #ccc;
       padding: 30px;
       text-align: center;
       margin: 30px;
-      border: 1px solid #ccc;
     }
 
     @media print {
+      @page {
+        size: A4;
+        margin: 10mm;
+      }
+
       body {
         background: #fff;
       }
 
       .toolbar {
-        display: none;
+        display: none !important;
       }
 
       .container {
-        margin: 0;
         max-width: none;
+        margin: 0;
       }
 
       .label {
-        border: 0;
         margin: 0;
-        min-height: auto;
+        border: 2px solid #111;
+        break-after: page;
+        page-break-after: always;
+        min-height: 270mm;
+      }
+
+      .label:last-child {
+        break-after: auto;
+        page-break-after: auto;
       }
     }
 
     @media (max-width: 700px) {
-      .grid {
+      .top {
         grid-template-columns: 1fr;
       }
 
-      .field.full {
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .box.full {
         grid-column: auto;
       }
 
-      .header {
+      .order-row {
         flex-direction: column;
-        gap: 15px;
+        align-items: flex-start;
       }
     }
   </style>
@@ -182,15 +235,14 @@
     </button>
   </div>
 
-  <div id="app" class="container">
-    جاري تحميل البوليصة...
-  </div>
+  <main id="app" class="container">
+    جاري تحميل البوالص...
+  </main>
 
   <script>
     async function loadLabels() {
       const params = new URLSearchParams(window.location.search);
       const order = params.get("order");
-
       const app = document.getElementById("app");
 
       if (!order) {
@@ -208,92 +260,89 @@
 
         if (!response.ok || !data.ok) {
           app.innerHTML =
-            `<div class="error">${data.error || "تعذر تحميل البوليصة"}</div>`;
+            `<div class="error">${escapeHtml(data.error || "تعذر تحميل البوالص")}</div>`;
           return;
         }
 
         app.innerHTML = "";
 
         data.labels.forEach(label => {
-          const element = document.createElement("section");
+          const section = document.createElement("section");
+          section.className = "label";
 
-          element.className = "label";
+          section.innerHTML = `
+            <div class="top">
+              <div class="piece-box">
+                ${escapeHtml(label.package)}
+              </div>
 
-          element.innerHTML = `
-            <div class="header">
-              <div>
+              <div class="brand-area">
                 <div class="brand">متجر النواق</div>
                 <div class="carrier">الناقل: الصاعدي</div>
               </div>
+            </div>
 
-              <div class="package-number">
-                ${escapeHtml(label.package)}
+            <div class="order-row">
+              <div class="order-title">رقم الطلب</div>
+              <div class="order-number">
+                ${escapeHtml(label.orderNumber)}
               </div>
             </div>
 
-            <div class="order-number">
-              رقم الطلب:
-              ${escapeHtml(label.orderNumber)}
-            </div>
-
-            <div class="grid">
-
-              <div class="field">
-                <div class="label-title">اسم العميل</div>
-                <div class="value">
+            <div class="info-grid">
+              <div class="box">
+                <div class="box-title">اسم العميل</div>
+                <div class="box-value">
                   ${escapeHtml(label.customerName || "-")}
                 </div>
               </div>
 
-              <div class="field">
-                <div class="label-title">رقم الجوال</div>
-                <div class="value">
+              <div class="box">
+                <div class="box-title">رقم الجوال</div>
+                <div class="box-value">
                   ${escapeHtml(label.mobile || "-")}
                 </div>
               </div>
 
-              <div class="field">
-                <div class="label-title">المدينة</div>
-                <div class="value">
+              <div class="box">
+                <div class="box-title">المدينة</div>
+                <div class="box-value">
                   ${escapeHtml(label.city || "-")}
                 </div>
               </div>
 
-              <div class="field">
-                <div class="label-title">شركة الشحن</div>
-                <div class="value">
-                  الصاعدي
-                </div>
+              <div class="box">
+                <div class="box-title">شركة الشحن</div>
+                <div class="box-value">الصاعدي</div>
               </div>
 
-              <div class="field full">
-                <div class="label-title">محتوى الشحنة</div>
-                <div class="value">
+              <div class="box full">
+                <div class="box-title">محتوى الشحنة</div>
+                <div class="shipment-content">
                   ${escapeHtml(label.product || "-")}
                 </div>
               </div>
 
-              <div class="field full">
-                <div class="label-title">حالة الشحن</div>
-                <div class="paid">
-                  مدفوع
-                </div>
+              <div class="box full">
+                <div class="box-title">حالة الشحن</div>
+                <div class="paid">مدفوع</div>
               </div>
-
             </div>
 
             <div class="footer">
               <span>متجر النواق</span>
-              <span>${escapeHtml(label.package)}</span>
+              <span class="footer-piece">
+                ${escapeHtml(label.package)}
+              </span>
             </div>
           `;
 
-          app.appendChild(element);
+          app.appendChild(section);
         });
 
       } catch (error) {
         app.innerHTML =
-          '<div class="error">حدث خطأ أثناء تحميل البوليصة</div>';
+          '<div class="error">حدث خطأ أثناء تحميل البوالص</div>';
       }
     }
 
