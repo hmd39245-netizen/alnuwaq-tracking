@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>بوليصة الصاعدي</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f3f3f3;
+      font-family: Arial, sans-serif;
+      color: #111;
+    }
+
+    .toolbar {
+      padding: 14px;
+      text-align: center;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .print-btn {
+      border: 0;
+      background: #111;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 20px auto;
+    }
+
+    .label {
+      width: 100%;
+      min-height: 520px;
+      background: #fff;
+      margin-bottom: 20px;
+      padding: 28px;
+      border: 2px solid #111;
+      page-break-after: always;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid #111;
+      padding-bottom: 15px;
+      margin-bottom: 20px;
+    }
+
+    .brand {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .carrier {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .package-number {
+      font-size: 44px;
+      font-weight: 800;
+      border: 3px solid #111;
+      padding: 8px 18px;
+      min-width: 110px;
+      text-align: center;
+    }
+
+    .order-number {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .field {
+      border: 1.5px solid #111;
+      padding: 13px;
+      min-height: 70px;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .label-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 7px;
+      color: #555;
+    }
+
+    .value {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .paid {
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .footer {
+      margin-top: 24px;
+      border-top: 2px solid #111;
+      padding-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+    }
+
+    .error {
+      background: #fff;
+      padding: 30px;
+      text-align: center;
+      margin: 30px;
+      border: 1px solid #ccc;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .toolbar {
+        display: none;
+      }
+
+      .container {
+        margin: 0;
+        max-width: none;
+      }
+
+      .label {
+        border: 0;
+        margin: 0;
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .field.full {
+        grid-column: auto;
+      }
+
+      .header {
+        flex-direction: column;
+        gap: 15px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="toolbar">
+    <button class="print-btn" onclick="window.print()">
+      طباعة البوالص
+    </button>
+  </div>
+
+  <div id="app" class="container">
+    جاري تحميل البوليصة...
+  </div>
+
+  <script>
+    async function loadLabels() {
+      const params = new URLSearchParams(window.location.search);
+      const order = params.get("order");
+
+      const app = document.getElementById("app");
+
+      if (!order) {
+        app.innerHTML =
+          '<div class="error">رقم الطلب غير موجود</div>';
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/saeedi-label?order=${encodeURIComponent(order)}`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+          app.innerHTML =
+            `<div class="error">${data.error || "تعذر تحميل البوليصة"}</div>`;
+          return;
+        }
+
+        app.innerHTML = "";
+
+        data.labels.forEach(label => {
+          const element = document.createElement("section");
+
+          element.className = "label";
+
+          element.innerHTML = `
+            <div class="header">
+              <div>
+                <div class="brand">متجر النواق</div>
+                <div class="carrier">الناقل: الصاعدي</div>
+              </div>
+
+              <div class="package-number">
+                ${escapeHtml(label.package)}
+              </div>
+            </div>
+
+            <div class="order-number">
+              رقم الطلب:
+              ${escapeHtml(label.orderNumber)}
+            </div>
+
+            <div class="grid">
+
+              <div class="field">
+                <div class="label-title">اسم العميل</div>
+                <div class="value">
+                  ${escapeHtml(label.customerName || "-")}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label-title">رقم الجوال</div>
+                <div class="value">
+                  ${escapeHtml(label.mobile || "-")}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label-title">المدينة</div>
+                <div class="value">
+                  ${escapeHtml(label.city || "-")}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label-title">شركة الشحن</div>
+                <div class="value">
+                  الصاعدي
+                </div>
+              </div>
+
+              <div class="field full">
+                <div class="label-title">محتوى الشحنة</div>
+                <div class="value">
+                  ${escapeHtml(label.product || "-")}
+                </div>
+              </div>
+
+              <div class="field full">
+                <div class="label-title">حالة الشحن</div>
+                <div class="paid">
+                  مدفوع
+                </div>
+              </div>
+
+            </div>
+
+            <div class="footer">
+              <span>متجر النواق</span>
+              <span>${escapeHtml(label.package)}</span>
+            </div>
+          `;
+
+          app.appendChild(element);
+        });
+
+      } catch (error) {
+        app.innerHTML =
+          '<div class="error">حدث خطأ أثناء تحميل البوليصة</div>';
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    loadLabels();
+  </script>
+
+</body>
+</html>
