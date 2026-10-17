@@ -119,8 +119,6 @@ export default async function handler(req, res) {
         );
       }
 
-      // أهم تعديل:
-      // ندمج trackShipment + orderHistory
       const history =
         mergeHistories(
           shipment?.history || [],
@@ -611,25 +609,48 @@ function classifyOtoStatus(
 function classifyTrackingStage(
   shipment
 ) {
-  const combined =
-    normalize(
-      `${shipment?.otoStatus || ""}
-       ${shipment?.dcStatus || ""}
-       ${(shipment?.history || [])
-         .map(
-           x =>
-             `${x.status || ""} ${x.description || ""}`
-         )
-         .join(" ")}`
-    );
+  const history =
+    Array.isArray(shipment?.history)
+      ? shipment.history
+      : [];
+
+  // نعتمد على أحدث حدث فقط
+  const latest =
+    history[0] || null;
+
+  const currentText =
+    latest
+      ? `${latest.status || ""} ${latest.dcStatus || ""} ${latest.description || ""}`
+      : `${shipment?.otoStatus || ""} ${shipment?.dcStatus || ""}`;
 
   if (
-    /delivered|completed|تم التسليم|تم التوصيل/.test(combined)
+    isConfirmedDeliveredText(
+      currentText
+    )
   ) {
     return 4;
   }
 
   return 3;
+}
+
+
+function isConfirmedDeliveredText(value) {
+  const s =
+    normalize(value);
+
+  // هذه الحالات ليست تسليم
+  if (
+    /on hold|attempting to contact|cannot be reached|mobile cannot be reached|delivery scheduled|scheduled|delivery exception|undeliverable|تعذر.*التواصل|محاوله.*التواصل|معلق/.test(s)
+  ) {
+    return false;
+  }
+
+  return (
+    /(^|\s)delivered(\s|$)/.test(s) ||
+    /(^|\s)completed(\s|$)/.test(s) ||
+    /تم التسليم|تم التوصيل/.test(s)
+  );
 }
 
 
@@ -1413,26 +1434,56 @@ async function trackShipment(
       }
     );
 
+    // بعض ردود OTO تضع سجل الحالات داخل مصفوفة داخلية
+    const nestedHistory =
+      normalizeHistory(data)
+        .map(item => ({
+          status:
+            String(
+              item?.status ||
+              ""
+            ),
+
+          dcStatus:
+            String(
+              item?.dcStatus ||
+              ""
+            ),
+
+          date:
+            String(
+              item?.date ||
+              ""
+            ),
+
+          description:
+            redactPII(
+              String(
+                item?.description ||
+                ""
+              )
+            ),
+
+          shipmentId:
+            "",
+
+          trackingNumber:
+            requestedTracking
+        }));
+
+    const carrierHistory =
+      mergeHistories(
+        [
+          ...normalizedItems,
+          ...nestedHistory
+        ],
+        []
+      );
+
     const current =
+      carrierHistory[0] ||
       normalizedItems[0] ||
       {};
-
-    // نخلي تحديثات أرامكس الفعلية
-    // ونحذف تحديثات OTO الإدارية فقط
-    const carrierHistory =
-      normalizedItems
-        .filter(item => {
-          const combined =
-            `${item.status || ""} ${item.dcStatus || ""} ${item.description || ""}`;
-
-          return !isInternalOtoEvent(
-            combined
-          );
-        })
-        .slice(
-          0,
-          30
-        );
 
     return {
       trackingNumber:
@@ -1615,13 +1666,12 @@ function mergeHistories(
       continue;
     }
 
-    // مفتاح لمنع التكرار
+    // منع التكرار حتى لو الوقت مختلف
     const key =
       [
         normalize(status),
         normalize(dcStatus),
-        normalize(description),
-        normalizeDateKey(date)
+        normalize(description)
       ].join("|");
 
     if (
@@ -1694,32 +1744,6 @@ function mergeHistories(
     0,
     30
   );
-}
-
-
-function normalizeDateKey(value) {
-  const date =
-    new Date(
-      value
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(
-      value || ""
-    );
-  }
-
-  // تقريب للدقيقة لمنع تكرار نفس الحدث
-  date.setSeconds(
-    0,
-    0
-  );
-
-  return date.toISOString();
 }
 
 
