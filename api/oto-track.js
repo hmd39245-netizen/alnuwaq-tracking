@@ -614,7 +614,6 @@ function classifyTrackingStage(
       ? shipment.history
       : [];
 
-  // نعتمد على أحدث حدث فقط
   const latest =
     history[0] || null;
 
@@ -639,7 +638,6 @@ function isConfirmedDeliveredText(value) {
   const s =
     normalize(value);
 
-  // هذه الحالات ليست تسليم
   if (
     /on hold|attempting to contact|cannot be reached|mobile cannot be reached|delivery scheduled|scheduled|delivery exception|undeliverable|تعذر.*التواصل|محاوله.*التواصل|معلق/.test(s)
   ) {
@@ -1434,7 +1432,6 @@ async function trackShipment(
       }
     );
 
-    // بعض ردود OTO تضع سجل الحالات داخل مصفوفة داخلية
     const nestedHistory =
       normalizeHistory(data)
         .map(item => ({
@@ -1602,6 +1599,24 @@ function mergeHistories(
       : [])
   ];
 
+  combined.sort((a, b) => {
+    const da = new Date(
+      a?.date ||
+      a?.dcUpdateDate ||
+      a?.updateDate ||
+      0
+    ).getTime();
+
+    const db = new Date(
+      b?.date ||
+      b?.dcUpdateDate ||
+      b?.updateDate ||
+      0
+    ).getTime();
+
+    return db - da;
+  });
+
   const seen =
     new Set();
 
@@ -1616,7 +1631,7 @@ function mergeHistories(
       continue;
     }
 
-    const status =
+    const rawStatus =
       String(
         item.status ||
         item.otoStatus ||
@@ -1624,7 +1639,7 @@ function mergeHistories(
         ""
       ).trim();
 
-    const dcStatus =
+    const rawDcStatus =
       String(
         item.dcStatus ||
         ""
@@ -1648,15 +1663,15 @@ function mergeHistories(
       );
 
     if (
-      !status &&
-      !dcStatus &&
+      !rawStatus &&
+      !rawDcStatus &&
       !description
     ) {
       continue;
     }
 
     const combinedText =
-      `${status} ${dcStatus} ${description}`;
+      `${rawStatus} ${rawDcStatus} ${description}`;
 
     if (
       isInternalOtoEvent(
@@ -1666,13 +1681,25 @@ function mergeHistories(
       continue;
     }
 
-    // منع التكرار حتى لو الوقت مختلف
+    const status =
+      friendlyAramexStatus(
+        rawStatus,
+        rawDcStatus,
+        description
+      );
+
+    const dcStatus =
+      /^sh\d+$/i.test(rawDcStatus)
+        ? ""
+        : rawDcStatus;
+
+    const descriptionKey =
+      normalize(description);
+
     const key =
-      [
-        normalize(status),
-        normalize(dcStatus),
-        normalize(description)
-      ].join("|");
+      descriptionKey
+        ? `desc:${descriptionKey}`
+        : `status:${normalize(status)}`;
 
     if (
       seen.has(key)
@@ -1705,45 +1732,93 @@ function mergeHistories(
     });
   }
 
-  result.sort(
-    (a, b) => {
-      const da =
-        new Date(
-          a.date
-        ).getTime();
-
-      const db =
-        new Date(
-          b.date
-        ).getTime();
-
-      if (
-        Number.isNaN(da) &&
-        Number.isNaN(db)
-      ) {
-        return 0;
-      }
-
-      if (
-        Number.isNaN(da)
-      ) {
-        return 1;
-      }
-
-      if (
-        Number.isNaN(db)
-      ) {
-        return -1;
-      }
-
-      return db - da;
-    }
-  );
-
   return result.slice(
     0,
     30
   );
+}
+
+
+function friendlyAramexStatus(
+  status,
+  dcStatus,
+  description
+) {
+  const text =
+    normalize(
+      `${status || ""} ${dcStatus || ""} ${description || ""}`
+    );
+
+  if (
+    /on hold|attempting to contact|cannot be reached|mobile cannot be reached/.test(text)
+  ) {
+    return "تعذر التواصل مع العميل";
+  }
+
+  if (
+    /out for delivery|out.?for.?delivery|with courier/.test(text)
+  ) {
+    return "خرجت الشحنة للتسليم";
+  }
+
+  if (
+    /under processing at operations facility|processing at operations facility/.test(text)
+  ) {
+    return "الشحنة قيد المعالجة لدى أرامكس";
+  }
+
+  if (
+    /arrived destination terminal|arrived.?terminal|arrived.?hub|arrived.?facility/.test(text)
+  ) {
+    return "وصلت إلى محطة شركة الشحن";
+  }
+
+  if (
+    /departed.?terminal|departed.?hub|departed.?facility/.test(text)
+  ) {
+    return "غادرت محطة شركة الشحن";
+  }
+
+  if (
+    isConfirmedDeliveredText(text)
+  ) {
+    return "تم تسليم الشحنة";
+  }
+
+  if (
+    /^sh\d+$/i.test(
+      String(status || "").trim()
+    )
+  ) {
+    return "تحديث من شركة الشحن";
+  }
+
+  return String(status || "").trim();
+}
+
+
+function normalizeDateKey(value) {
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return String(
+      value || ""
+    );
+  }
+
+  date.setSeconds(
+    0,
+    0
+  );
+
+  return date.toISOString();
 }
 
 
