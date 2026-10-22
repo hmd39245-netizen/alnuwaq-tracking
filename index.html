@@ -2104,13 +2104,13 @@ function renderSaeedi(data){
     messageBox.style.display = "block";
   }
 
-  const updateBox = document.querySelector(".update");
+  const actionsAnchor = messageBox || document.querySelector(".update");
 
-  if(updateBox){
-    updateBox.insertAdjacentHTML("afterend", `
+  if(actionsAnchor){
+    actionsAnchor.insertAdjacentHTML("afterend", `
       <div id="saeediActions" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px">
         <a href="tel:${escapeHtml(data.carrierPhone || "0566276686")}" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">اتصال بالصاعدي</a>
-        <a href="${escapeHtml(data.carrierLocation || "https://maps.app.goo.gl/NNJ3VgvtCKpaJKkcA")}" target="_blank" rel="noopener" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">موقع الصاعدي</a>
+        <a href="${escapeHtml(data.carrierLocation || "https://maps.app.goo.gl/koJSu6bHMWpANMWe6")}" target="_blank" rel="noopener" style="display:flex;justify-content:center;align-items:center;text-decoration:none;color:#fff;background:linear-gradient(180deg,#78543a,#67452f);padding:10px;border-radius:9px;font-size:11px;font-weight:800">موقع الصاعدي</a>
       </div>`);
   }
 
