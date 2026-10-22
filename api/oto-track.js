@@ -1716,7 +1716,11 @@ function mergeHistories(
 
       date,
 
-      description,
+      description: friendlyAramexDescription(
+        rawStatus,
+        rawDcStatus,
+        description
+      ),
 
       shipmentId:
         String(
@@ -1739,6 +1743,10 @@ function mergeHistories(
 }
 
 
+// ==================================================
+// ترجمة حالات أرامكس
+// ==================================================
+
 function friendlyAramexStatus(
   status,
   dcStatus,
@@ -1756,15 +1764,46 @@ function friendlyAramexStatus(
   }
 
   if (
-    /out for delivery|out.?for.?delivery|with courier/.test(text)
+    /delivery scheduled/.test(text)
   ) {
-    return "خرجت الشحنة للتسليم";
+    return "تم تحديد موعد للتسليم";
+  }
+
+  if (
+    /sms sent to consignee/.test(text)
+  ) {
+    return "تم إشعار المستلم";
+  }
+
+  if (
+    /record created/.test(text)
+  ) {
+    return "تم إنشاء الشحنة";
+  }
+
+  if (
+    /received at origin facility/.test(text)
+  ) {
+    return "تم استلام الشحنة في مركز الانطلاق";
   }
 
   if (
     /under processing at operations facility|processing at operations facility/.test(text)
   ) {
     return "الشحنة قيد المعالجة لدى أرامكس";
+  }
+
+  if (
+    /out for delivery|out.?for.?delivery|with courier/.test(text)
+  ) {
+    return "خرجت الشحنة للتسليم";
+  }
+
+  if (
+    /departed operations facility/.test(text) ||
+    (/departed/.test(text) && /in transit/.test(text))
+  ) {
+    return "الشحنة في الطريق";
   }
 
   if (
@@ -1793,9 +1832,125 @@ function friendlyAramexStatus(
     return "تحديث من شركة الشحن";
   }
 
-  return String(status || "").trim();
+  const rawStatus =
+    String(status || "").trim();
+
+  if (
+    /[a-z]/i.test(rawStatus)
+  ) {
+    return "تحديث من شركة الشحن";
+  }
+
+  return rawStatus ||
+    "تحديث من شركة الشحن";
 }
 
+
+// ==================================================
+// ترجمة وصف أرامكس
+// ==================================================
+
+function friendlyAramexDescription(
+  status,
+  dcStatus,
+  description
+) {
+  const raw =
+    String(
+      description || ""
+    ).trim();
+
+  const text =
+    normalize(
+      `${status || ""} ${dcStatus || ""} ${raw}`
+    );
+
+  if (
+    /on hold|attempting to contact|mobile cannot be reached|cannot be reached|customer not reachable/.test(text)
+  ) {
+    return "تعذر التواصل مع العميل، والشحنة معلقة مؤقتًا";
+  }
+
+  if (
+    /under processing at operations facility|processing at operations facility/.test(text)
+  ) {
+    return "الشحنة قيد المعالجة في مركز عمليات أرامكس";
+  }
+
+  if (
+    /departed operations facility/.test(text) ||
+    (/departed/.test(text) && /in transit/.test(text))
+  ) {
+    return "غادرت الشحنة مركز العمليات وهي في الطريق";
+  }
+
+  if (
+    /delivery scheduled/.test(text)
+  ) {
+    return "تم تحديد موعد لتسليم الشحنة";
+  }
+
+  if (
+    /sms sent to consignee/.test(text)
+  ) {
+    return "تم إرسال رسالة نصية إلى المستلم";
+  }
+
+  if (
+    /received at origin facility/.test(text)
+  ) {
+    return "تم استلام الشحنة في مركز الانطلاق";
+  }
+
+  if (
+    /record created/.test(text)
+  ) {
+    return "تم إنشاء سجل الشحنة لدى شركة الشحن";
+  }
+
+  if (
+    /out for delivery|with courier/.test(text)
+  ) {
+    return "الشحنة مع المندوب وفي طريقها للتسليم";
+  }
+
+  if (
+    /arrived at destination|arrived destination|received at destination facility/.test(text)
+  ) {
+    return "وصلت الشحنة إلى مركز شركة الشحن في مدينة الوجهة";
+  }
+
+  if (
+    /picked up|shipment picked up|received by carrier|carrier received|accepted by carrier/.test(text)
+  ) {
+    return "تم استلام الشحنة من المرسل";
+  }
+
+  if (
+    isConfirmedDeliveredText(text)
+  ) {
+    return "تم تسليم الشحنة بنجاح";
+  }
+
+  if (
+    /in transit/.test(text)
+  ) {
+    return "الشحنة في الطريق إلى وجهتها";
+  }
+
+  if (
+    /[a-z]/i.test(raw)
+  ) {
+    return "";
+  }
+
+  return raw;
+}
+
+
+// ==================================================
+// تاريخ الحدث
+// ==================================================
 
 function normalizeDateKey(value) {
   const date =
@@ -1854,6 +2009,8 @@ function isCarrierEvent(value) {
     /arrived.?facility/.test(s) ||
     /departed.?facility/.test(s) ||
 
+    /under processing at operations facility/.test(s) ||
+
     /in.?transit/.test(s) ||
     /\btransit\b/.test(s) ||
     /departed/.test(s) ||
@@ -1862,6 +2019,12 @@ function isCarrierEvent(value) {
 
     /with.?courier/.test(s) ||
     /out.?for.?delivery/.test(s) ||
+
+    /delivery scheduled/.test(s) ||
+
+    /sms sent to consignee/.test(s) ||
+
+    /record created/.test(s) ||
 
     /delivery.?attempt/.test(s) ||
     /attempted.?delivery/.test(s) ||
