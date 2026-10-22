@@ -2136,6 +2136,19 @@ document.getElementById("newSearch").addEventListener("click", () => {
   window.scrollTo({top:0,behavior:"smooth"});
   setTimeout(() => input.focus(),250);
 });
+
+// فتح الطلب تلقائيًا من الرابط
+// مثال: https://track.alnuwaq.com/?order=294578334
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  const orderFromUrl = String(params.get("order") || "").trim();
+
+  if (orderFromUrl) {
+    input.value = orderFromUrl;
+    setTimeout(() => track(), 150);
+  }
+})();
+
 </script>
 
 
