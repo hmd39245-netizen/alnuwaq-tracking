@@ -3,6 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+
+<script>
+(function(){
+  try{
+    const p = new URLSearchParams(window.location.search);
+    if(String(p.get("order") || "").trim()){
+      document.documentElement.classList.add("auto-order");
+    }
+  }catch(e){}
+})();
+</script>
+
 <title>تتبع الطلب | النواق</title>
 <style>
 :root{
@@ -1681,6 +1693,37 @@ main,
 }
 </style>
 
+
+<style>
+html.auto-order #heroSection,
+html.auto-order #searchCard{
+  display:none !important;
+}
+.auto-order-loading{
+  display:none;
+  max-width:720px;
+  margin:34px auto 0;
+  padding:22px 16px;
+  text-align:center;
+  border:1px solid #253551;
+  border-radius:18px;
+  background:linear-gradient(180deg,#101b2e,#0c1627);
+  color:#f3efe8;
+}
+html.auto-order .auto-order-loading{
+  display:block;
+}
+.auto-order-loading strong{
+  display:block;
+  font-size:15px;
+  margin-bottom:6px;
+}
+.auto-order-loading span{
+  font-size:11px;
+  color:#8998ae;
+}
+</style>
+
 </head>
 <body>
 <header>
@@ -1709,6 +1752,12 @@ main,
       </div>
       <div class="hint">أدخل رقم الطلب أو رقم التتبع كما هو ظاهر في تفاصيل طلبك.</div>
       <div id="error" class="error"></div>
+    </section>
+
+
+    <section id="autoOrderLoading" class="auto-order-loading">
+      <strong>جاري تحميل حالة طلبك...</strong>
+      <span>لحظات ويتم عرض تفاصيل التتبع مباشرة</span>
     </section>
 
     <section id="result" class="result">
@@ -2056,6 +2105,9 @@ function render(orderId, data){
 
   errorBox.classList.remove("show");
   result.classList.add("show");
+  const autoOrderLoading = document.getElementById("autoOrderLoading");
+  if(autoOrderLoading) autoOrderLoading.style.display = "none";
+  document.documentElement.classList.remove("auto-order");
   if(searchCard) searchCard.style.display = "none";
   if(heroSection) heroSection.style.display = "none";
 
@@ -2103,6 +2155,9 @@ async function track(){
     render(orderId, data);
   }catch(err){
     result.classList.remove("show");
+    document.documentElement.classList.remove("auto-order");
+    const autoOrderLoading = document.getElementById("autoOrderLoading");
+    if(autoOrderLoading) autoOrderLoading.style.display = "none";
     if(searchCard) searchCard.style.display = "block";
     if(heroSection) heroSection.style.display = "";
     errorBox.textContent = err.message || "حدث خطأ أثناء التتبع.";
@@ -2120,6 +2175,9 @@ input.addEventListener("keydown", e => {
 });
 
 document.getElementById("newSearch").addEventListener("click", () => {
+  document.documentElement.classList.remove("auto-order");
+  const autoOrderLoading = document.getElementById("autoOrderLoading");
+  if(autoOrderLoading) autoOrderLoading.style.display = "none";
   input.value = "";
   result.classList.remove("show");
   errorBox.classList.remove("show");
