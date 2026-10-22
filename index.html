@@ -1867,7 +1867,7 @@ html.auto-order .auto-order-loading{
 
             <div class="help">
               <p>إذا احتجت مساعدة بخصوص الطلب، تواصل معنا مباشرة.</p>
-              <a href="https://wa.me/966552468084" target="_blank" rel="noopener" style="background:linear-gradient(180deg,#78543a,#67452f)!important;border:1px solid #78543a!important;color:#fff!important;">التواصل مع خدمة العملاء</a>
+              <a id="supportWhatsapp" href="https://wa.me/966552468084" target="_blank" rel="noopener" style="background:linear-gradient(180deg,#78543a,#67452f)!important;border:1px solid #78543a!important;color:#fff!important;">التواصل مع الدعم الفني</a>
             </div>
           </aside>
         </div>
@@ -2129,6 +2129,29 @@ function render(orderId, data){
   document.getElementById("carrier").textContent = data.deliveryCompany || "—";
   document.getElementById("trackingNumber").textContent = data.trackingNumber || data.shipmentId || "—";
   document.getElementById("packageCount").textContent = data.packageCount ?? "—";
+
+  // تجهيز رسالة الدعم الفني تلقائيًا برقم الطلب وحالته
+  const supportWhatsapp = document.getElementById("supportWhatsapp");
+  if(supportWhatsapp){
+    const isTrackingSearch = data.inputType === "tracking";
+    const referenceNumber = isTrackingSearch
+      ? (data.trackingNumber || orderId)
+      : (data.orderId || orderId);
+
+    const referenceLabel = isTrackingSearch
+      ? "رقم التتبع"
+      : "رقم الطلب";
+
+    const supportMessage =
+      "السلام عليكم، لدي مشكلة بخصوص طلبي.\n" +
+      referenceLabel + ": " + referenceNumber + "\n" +
+      "الحالة الحالية: " + p.status + "\n" +
+      "أرجو مساعدتي في حل المشكلة.";
+
+    supportWhatsapp.href =
+      "https://wa.me/966552468084?text=" +
+      encodeURIComponent(supportMessage);
+  }
 
   document.getElementById("sceneTitle").textContent = p.title;
   document.getElementById("sceneCaption").textContent = p.text;
