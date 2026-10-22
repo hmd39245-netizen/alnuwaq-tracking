@@ -514,7 +514,7 @@ function buildSaeediResponse(
 
     carrierLocation:
       shipped
-        ? "https://maps.app.goo.gl/NNJ3VgvtCKpaJKkcA"
+        ? "https://maps.app.goo.gl/koJSu6bHMWpANMWe6"
         : ""
   };
 }
@@ -1716,11 +1716,12 @@ function mergeHistories(
 
       date,
 
-      description: friendlyAramexDescription(
-        rawStatus,
-        rawDcStatus,
-        description
-      ),
+      description:
+        friendlyAramexDescription(
+          rawStatus,
+          rawDcStatus,
+          description
+        ),
 
       shipmentId:
         String(
@@ -1788,15 +1789,15 @@ function friendlyAramexStatus(
   }
 
   if (
-    /under processing at operations facility|processing at operations facility/.test(text)
-  ) {
-    return "الشحنة قيد المعالجة لدى أرامكس";
-  }
-
-  if (
     /out for delivery|out.?for.?delivery|with courier/.test(text)
   ) {
     return "خرجت الشحنة للتسليم";
+  }
+
+  if (
+    /under processing at operations facility|processing at operations facility/.test(text)
+  ) {
+    return "الشحنة قيد المعالجة لدى أرامكس";
   }
 
   if (
