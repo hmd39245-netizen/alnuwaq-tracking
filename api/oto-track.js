@@ -1,7 +1,21 @@
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 15;
+const rateStore = globalThis.__alnuwaqTrackingRateStore || new Map();
+globalThis.__alnuwaqTrackingRateStore = rateStore;
+
 const SALLA_TRACKING_URL =
   "https://script.google.com/macros/s/AKfycbwtcuRqFEGX3rJ1o0yN_T2i8V51le5U4aJte5xnvfNAQILRtyqvNVojT4YMDop-hDr_/exec";
 
 export default async function handler(req, res) {
+  applySecurityHeaders(res);
+
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ ok: false, error: "الطريقة غير مسموحة" });
+  }
+
+  if (!checkRateLimit(req, res)) return;
+
   const query = String(req.query.order || "").trim();
 
   if (!query) {
@@ -20,11 +34,6 @@ export default async function handler(req, res) {
 
   try {
     const token = await getAccessToken();
-
-    // ==============================
-    // سلة أولاً
-    // ==============================
-
     const sallaResult = await getSallaOrder(query);
 
     if (sallaResult.type === "error") {
@@ -34,75 +43,30 @@ export default async function handler(req, res) {
       });
     }
 
+    // ==================================================
+    // الطلب موجود في سلة
+    // ==================================================
     if (sallaResult.type === "found") {
       const salla = sallaResult.order;
-      const stage = classifySallaStatus(salla.status);
+      const sallaStage = classifySallaStatus(salla.status);
 
-      // ==============================
-      // الصاعدي
-      // ==============================
-
+      // الصاعدي يعتمد على حالة سلة مباشرة
       if (isSaeedi(salla.shippingCompany)) {
         return res.status(200).json(
-          buildSaeediResponse(query, salla, stage)
+          buildSaeediResponse(query, salla, sallaStage)
         );
       }
 
-      // ==============================
-      // قبل الشحن نعتمد على سلة
-      // ==============================
-
-      if (stage < 3) {
-        return res.status(200).json({
-          ok: true,
-          source: "salla",
-          inputType: "order",
-
-          orderId:
-            salla.orderNumber || query,
-
-          stage,
-
-          ...uiForStage(stage),
-
-          rawStatus:
-            salla.status,
-
-          deliveryCompany: "",
-          trackingNumber: "",
-          trackingUrl: "",
-          shipmentId: "",
-
-          packageCount: null,
-
-          date:
-            salla.date || "",
-
-          history: [],
-
-          isSaeedi: false
-        });
-      }
-
-      // ==============================
-      // بعد الشحن
-      // ==============================
-
+      // مهم: نفحص OTO حتى لو سلة ما زالت تقول "جاري التجهيز"
       const oto = token
-        ? await getOtoOrder(
-            salla.orderNumber || query,
-            token
-          )
+        ? await getOtoOrder(salla.orderNumber || query, token)
         : null;
 
-      const trackingNumber =
-        oto?.trackingNumber || "";
+      const trackingNumber = oto?.trackingNumber || "";
 
-      const carrierCode =
-        carrierCodeFromName(
-          oto?.deliveryCompany ||
-          salla.shippingCompany
-        );
+      const carrierCode = carrierCodeFromName(
+        oto?.deliveryCompany || salla.shippingCompany
+      );
 
       let shipment = null;
 
@@ -119,10 +83,96 @@ export default async function handler(req, res) {
         );
       }
 
+      let effectiveStage = sallaStage;
+
+      if (oto) {
+        effectiveStage = Math.max(
+          effectiveStage,
+          classifyOtoStatus(
+            oto.status,
+            oto.dcStatus
+          )
+        );
+      }
+
+      if (shipment) {
+        effectiveStage = Math.max(
+          effectiveStage,
+          classifyTrackingStage(
+            shipment
+          )
+        );
+      }
+
+      const hasShippingEvidence = Boolean(
+        shipment ||
+        trackingNumber ||
+        oto?.shipmentId ||
+        (
+          oto &&
+          classifyOtoStatus(
+            oto.status,
+            oto.dcStatus
+          ) >= 3
+        )
+      );
+
+      // الطلب فعلاً لم يُشحن بعد
+      if (
+        sallaStage < 3 &&
+        !hasShippingEvidence
+      ) {
+        return res.status(200).json({
+          ok: true,
+
+          source: "salla",
+
+          inputType: "order",
+
+          orderId:
+            salla.orderNumber ||
+            query,
+
+          stage:
+            sallaStage,
+
+          ...uiForStage(
+            sallaStage
+          ),
+
+          rawStatus:
+            salla.status,
+
+          deliveryCompany: "",
+
+          trackingNumber: "",
+
+          trackingUrl: "",
+
+          shipmentId: "",
+
+          packageCount:
+            null,
+
+          date:
+            salla.date ||
+            "",
+
+          history: [],
+
+          isSaeedi:
+            false
+        });
+      }
+
       const history =
         mergeHistories(
-          shipment?.history || [],
-          buildCarrierHistory(oto)
+          shipment?.history ||
+          [],
+
+          buildCarrierHistory(
+            oto
+          )
         );
 
       return res.status(200).json({
@@ -142,13 +192,18 @@ export default async function handler(req, res) {
           salla.orderNumber ||
           query,
 
-        stage,
+        stage:
+          effectiveStage,
 
-        ...uiForStage(stage),
+        ...uiForStage(
+          effectiveStage
+        ),
 
         rawStatus:
           shipment?.otoStatus ||
           shipment?.dcStatus ||
+          oto?.status ||
+          oto?.dcStatus ||
           salla.status ||
           "",
 
@@ -177,7 +232,8 @@ export default async function handler(req, res) {
           "",
 
         packageCount:
-          oto?.packageCount ?? null,
+          oto?.packageCount ??
+          null,
 
         date:
           shipment?.date ||
@@ -185,20 +241,24 @@ export default async function handler(req, res) {
           salla.date ||
           "",
 
-        history,
+        history:
+          effectiveStage >= 3
+            ? history
+            : [],
 
         isSaeedi:
           false
       });
     }
 
-    // ==============================
-    // الطلبات القديمة من OTO
-    // ==============================
-
+    // ==================================================
+    // طلب قديم غير موجود في Google Sheet - نجرب OTO
+    // ==================================================
     if (
       token &&
-      isPossibleOrderNumber(query)
+      isPossibleOrderNumber(
+        query
+      )
     ) {
       const oto =
         await getOtoOrder(
@@ -207,7 +267,7 @@ export default async function handler(req, res) {
         );
 
       if (oto) {
-        const stage =
+        let stage =
           classifyOtoStatus(
             oto.status,
             oto.dcStatus
@@ -218,7 +278,8 @@ export default async function handler(req, res) {
             oto.deliveryCompany
           );
 
-        let shipment = null;
+        let shipment =
+          null;
 
         if (
           oto.trackingNumber &&
@@ -235,10 +296,24 @@ export default async function handler(req, res) {
             );
         }
 
+        if (shipment) {
+          stage =
+            Math.max(
+              stage,
+              classifyTrackingStage(
+                shipment
+              )
+            );
+        }
+
         const history =
           mergeHistories(
-            shipment?.history || [],
-            buildCarrierHistory(oto)
+            shipment?.history ||
+            [],
+
+            buildCarrierHistory(
+              oto
+            )
           );
 
         return res.status(200).json({
@@ -257,7 +332,9 @@ export default async function handler(req, res) {
 
           stage,
 
-          ...uiForStage(stage),
+          ...uiForStage(
+            stage
+          ),
 
           rawStatus:
             shipment?.otoStatus ||
@@ -288,7 +365,8 @@ export default async function handler(req, res) {
             "",
 
           packageCount:
-            oto.packageCount ?? null,
+            oto.packageCount ??
+            null,
 
           date:
             shipment?.date ||
@@ -306,13 +384,14 @@ export default async function handler(req, res) {
       }
     }
 
-    // ==============================
-    // رقم تتبع أرامكس مباشر
-    // ==============================
-
+    // ==================================================
+    // بحث مباشر برقم تتبع أرامكس
+    // ==================================================
     if (
       token &&
-      isPossibleTrackingNumber(query)
+      isPossibleTrackingNumber(
+        query
+      )
     ) {
       const shipment =
         await trackShipment(
@@ -341,7 +420,9 @@ export default async function handler(req, res) {
 
           stage,
 
-          ...uiForStage(stage),
+          ...uiForStage(
+            stage
+          ),
 
           rawStatus:
             shipment.otoStatus ||
@@ -400,19 +481,166 @@ export default async function handler(req, res) {
 
 
 // ==================================================
-// التحقق
+// الحماية
 // ==================================================
 
-function onlyDigits(value) {
-  return /^\d+$/.test(
-    String(value || "").trim()
+function getClientIp(req) {
+  const candidates = [
+    req.headers?.["x-vercel-forwarded-for"],
+    req.headers?.["x-forwarded-for"],
+    req.headers?.["x-real-ip"]
+  ];
+
+  for (
+    const value
+    of candidates
+  ) {
+    if (!value) continue;
+
+    const ip =
+      String(value)
+        .split(",")[0]
+        .trim();
+
+    if (ip) {
+      return ip;
+    }
+  }
+
+  return "unknown";
+}
+
+
+function applySecurityHeaders(res) {
+  res.setHeader(
+    "Cache-Control",
+    "private, no-store, no-cache, max-age=0, must-revalidate"
+  );
+
+  res.setHeader(
+    "Pragma",
+    "no-cache"
+  );
+
+  res.setHeader(
+    "X-Content-Type-Options",
+    "nosniff"
+  );
+
+  res.setHeader(
+    "Referrer-Policy",
+    "no-referrer"
+  );
+
+  res.setHeader(
+    "X-Robots-Tag",
+    "noindex, nofollow, noarchive"
   );
 }
 
 
-function isPossibleSearchNumber(value) {
+function checkRateLimit(
+  req,
+  res
+) {
+  const now =
+    Date.now();
+
+  const ip =
+    getClientIp(
+      req
+    );
+
+  const current =
+    rateStore.get(
+      ip
+    );
+
+  if (
+    !current ||
+    now -
+      current.startedAt >=
+      RATE_LIMIT_WINDOW_MS
+  ) {
+    rateStore.set(
+      ip,
+      {
+        startedAt:
+          now,
+
+        count:
+          1
+      }
+    );
+
+    return true;
+  }
+
+  current.count += 1;
+
+  if (
+    current.count >
+    RATE_LIMIT_MAX_REQUESTS
+  ) {
+    const retryAfter =
+      Math.max(
+        1,
+
+        Math.ceil(
+          (
+            RATE_LIMIT_WINDOW_MS -
+            (
+              now -
+              current.startedAt
+            )
+          ) /
+          1000
+        )
+      );
+
+    res.setHeader(
+      "Retry-After",
+      String(
+        retryAfter
+      )
+    );
+
+    res.status(429).json({
+      ok: false,
+
+      error:
+        "طلبات كثيرة خلال وقت قصير، حاول بعد قليل"
+    });
+
+    return false;
+  }
+
+  return true;
+}
+
+
+// ==================================================
+// التحقق من الأرقام
+// ==================================================
+
+function onlyDigits(value) {
+  return /^\d+$/.test(
+    String(
+      value ||
+      ""
+    ).trim()
+  );
+}
+
+
+function isPossibleSearchNumber(
+  value
+) {
   const v =
-    String(value || "").trim();
+    String(
+      value ||
+      ""
+    ).trim();
 
   return (
     onlyDigits(v) &&
@@ -422,9 +650,14 @@ function isPossibleSearchNumber(value) {
 }
 
 
-function isPossibleOrderNumber(value) {
+function isPossibleOrderNumber(
+  value
+) {
   const v =
-    String(value || "").trim();
+    String(
+      value ||
+      ""
+    ).trim();
 
   return (
     onlyDigits(v) &&
@@ -434,9 +667,14 @@ function isPossibleOrderNumber(value) {
 }
 
 
-function isPossibleTrackingNumber(value) {
+function isPossibleTrackingNumber(
+  value
+) {
   const v =
-    String(value || "").trim();
+    String(
+      value ||
+      ""
+    ).trim();
 
   return (
     onlyDigits(v) &&
@@ -473,7 +711,9 @@ function buildSaeediResponse(
 
     stage,
 
-    ...uiForStage(stage),
+    ...uiForStage(
+      stage
+    ),
 
     rawStatus:
       salla.status,
@@ -494,7 +734,8 @@ function buildSaeediResponse(
       null,
 
     date:
-      salla.date || "",
+      salla.date ||
+      "",
 
     history:
       [],
@@ -521,44 +762,71 @@ function buildSaeediResponse(
 
 
 // ==================================================
-// تنظيف النص
+// الحالات
 // ==================================================
 
 function normalize(value) {
-  return String(value || "")
+  return String(
+    value ||
+    ""
+  )
     .toLowerCase()
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
-    .replace(/[ًٌٍَُِّْـ]/g, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /[أإآ]/g,
+      "ا"
+    )
+    .replace(
+      /ى/g,
+      "ي"
+    )
+    .replace(
+      /ة/g,
+      "ه"
+    )
+    .replace(
+      /[ًٌٍَُِّْـ]/g,
+      ""
+    )
+    .replace(
+      /[_-]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
 
 
-// ==================================================
-// حالة سلة
-// ==================================================
-
-function classifySallaStatus(status) {
+function classifySallaStatus(
+  status
+) {
   const s =
-    normalize(status);
+    normalize(
+      status
+    );
 
   if (
-    /تم التسليم|تم التوصيل|مكتمل|delivered|completed|complete/.test(s)
+    /تم التسليم|تم التوصيل|مكتمل|delivered|completed|complete/.test(
+      s
+    )
   ) {
     return 4;
   }
 
   if (
-    /تم الشحن|تم شحن|مشحون|جاري التوصيل|قيد التوصيل|خرج للتسليم|خرجت للتسليم|في الطريق|shipped|shipping|in.?transit|transit|out.?for.?delivery/.test(s)
+    /تم الشحن|تم شحن|مشحون|جاري التوصيل|قيد التوصيل|خرج للتسليم|خرجت للتسليم|في الطريق|shipped|shipping|in.?transit|transit|out.?for.?delivery/.test(
+      s
+    )
   ) {
     return 3;
   }
 
   if (
-    /جاري التجهيز|قيد التجهيز|تم التنفيذ|جاهز للشحن|بانتظار الشحن|انتظار الشحن|processing|preparing|ready|packed|packing/.test(s)
+    /جاري التجهيز|قيد التجهيز|تم التنفيذ|جاهز للشحن|بانتظار الشحن|انتظار الشحن|processing|preparing|ready|packed|packing/.test(
+      s
+    )
   ) {
     return 2;
   }
@@ -566,10 +834,6 @@ function classifySallaStatus(status) {
   return 1;
 }
 
-
-// ==================================================
-// حالة OTO
-// ==================================================
 
 function classifyOtoStatus(
   status,
@@ -581,19 +845,25 @@ function classifyOtoStatus(
     );
 
   if (
-    /delivered|completed|complete|تم التسليم|تم التوصيل/.test(s)
+    /delivered|completed|complete|تم التسليم|تم التوصيل/.test(
+      s
+    )
   ) {
     return 4;
   }
 
   if (
-    isCarrierEvent(s)
+    isCarrierEvent(
+      s
+    )
   ) {
     return 3;
   }
 
   if (
-    /processing|preparing|ready|packed|packing|warehouse|جاري التجهيز/.test(s)
+    /processing|preparing|ready|packed|packing|warehouse|جاري التجهيز/.test(
+      s
+    )
   ) {
     return 2;
   }
@@ -602,62 +872,67 @@ function classifyOtoStatus(
 }
 
 
-// ==================================================
-// التتبع المباشر
-// ==================================================
-
 function classifyTrackingStage(
   shipment
 ) {
   const history =
-    Array.isArray(shipment?.history)
+    Array.isArray(
+      shipment?.history
+    )
       ? shipment.history
       : [];
 
   const latest =
-    history[0] || null;
+    history[0] ||
+    null;
 
   const currentText =
     latest
       ? `${latest.status || ""} ${latest.dcStatus || ""} ${latest.description || ""}`
       : `${shipment?.otoStatus || ""} ${shipment?.dcStatus || ""}`;
 
-  if (
-    isConfirmedDeliveredText(
-      currentText
-    )
-  ) {
-    return 4;
-  }
-
-  return 3;
+  return isConfirmedDeliveredText(
+    currentText
+  )
+    ? 4
+    : 3;
 }
 
 
-function isConfirmedDeliveredText(value) {
+function isConfirmedDeliveredText(
+  value
+) {
   const s =
-    normalize(value);
+    normalize(
+      value
+    );
 
   if (
-    /on hold|attempting to contact|cannot be reached|mobile cannot be reached|delivery scheduled|scheduled|delivery exception|undeliverable|تعذر.*التواصل|محاوله.*التواصل|معلق/.test(s)
+    /on hold|attempting to contact|cannot be reached|mobile cannot be reached|delivery scheduled|scheduled|delivery exception|undeliverable|تعذر.*التواصل|محاوله.*التواصل|معلق/.test(
+      s
+    )
   ) {
     return false;
   }
 
   return (
-    /(^|\s)delivered(\s|$)/.test(s) ||
-    /(^|\s)completed(\s|$)/.test(s) ||
-    /تم التسليم|تم التوصيل/.test(s)
+    /(^|\s)delivered(\s|$)/.test(
+      s
+    ) ||
+    /(^|\s)completed(\s|$)/.test(
+      s
+    ) ||
+    /تم التسليم|تم التوصيل/.test(
+      s
+    )
   );
 }
 
 
-// ==================================================
-// بيانات الواجهة
-// ==================================================
-
 function uiForStage(stage) {
-  if (stage === 4) {
+  if (
+    stage === 4
+  ) {
     return {
       displayStatus:
         "تم التسليم",
@@ -673,7 +948,9 @@ function uiForStage(stage) {
     };
   }
 
-  if (stage === 3) {
+  if (
+    stage === 3
+  ) {
     return {
       displayStatus:
         "تم الشحن",
@@ -689,7 +966,9 @@ function uiForStage(stage) {
     };
   }
 
-  if (stage === 2) {
+  if (
+    stage === 2
+  ) {
     return {
       displayStatus:
         "جاري التجهيز",
@@ -722,10 +1001,12 @@ function uiForStage(stage) {
 
 
 // ==================================================
-// سلة
+// سلة / Google Apps Script
 // ==================================================
 
-async function getSallaOrder(orderId) {
+async function getSallaOrder(
+  orderId
+) {
   const controller =
     new AbortController();
 
@@ -760,7 +1041,9 @@ async function getSallaOrder(orderId) {
         }
       );
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       return {
         type:
           "error"
@@ -774,7 +1057,10 @@ async function getSallaOrder(orderId) {
 
     try {
       data =
-        JSON.parse(text);
+        JSON.parse(
+          text
+        );
+
     } catch {
       return {
         type:
@@ -812,7 +1098,9 @@ async function getSallaOrder(orderId) {
     if (
       returnedOrderNumber &&
       returnedOrderNumber !==
-        String(orderId)
+        String(
+          orderId
+        )
     ) {
       return {
         type:
@@ -827,7 +1115,9 @@ async function getSallaOrder(orderId) {
       order: {
         orderNumber:
           returnedOrderNumber ||
-          String(orderId),
+          String(
+            orderId
+          ),
 
         status:
           String(
@@ -856,13 +1146,15 @@ async function getSallaOrder(orderId) {
     };
 
   } finally {
-    clearTimeout(timer);
+    clearTimeout(
+      timer
+    );
   }
 }
 
 
 // ==================================================
-// توكن OTO
+// OTO token
 // ==================================================
 
 async function getAccessToken() {
@@ -870,7 +1162,9 @@ async function getAccessToken() {
     process.env
       .OTO_REFRESH_TOKEN;
 
-  if (!refreshToken) {
+  if (
+    !refreshToken
+  ) {
     return null;
   }
 
@@ -899,9 +1193,13 @@ async function getAccessToken() {
       );
 
     const data =
-      await safeJson(response);
+      await safeJson(
+        response
+      );
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       return null;
     }
 
@@ -961,7 +1259,8 @@ async function getOtoOrder(
 
     if (
       !statusResponse.ok ||
-      statusData?.success === false
+      statusData?.success ===
+        false
     ) {
       return null;
     }
@@ -1010,8 +1309,12 @@ async function getOtoOrder(
 
     if (
       returnedOrderId &&
-      normalizeId(returnedOrderId) !==
-        normalizeId(orderId)
+      normalizeId(
+        returnedOrderId
+      ) !==
+        normalizeId(
+          orderId
+        )
     ) {
       return null;
     }
@@ -1141,7 +1444,9 @@ async function getOtoOrder(
         returnedOrderId
       );
 
-    if (!hasRealData) {
+    if (
+      !hasRealData
+    ) {
       return null;
     }
 
@@ -1160,8 +1465,9 @@ async function getOtoOrder(
 
             body:
               JSON.stringify({
-                orderIds:
-                  [orderId]
+                orderIds: [
+                  orderId
+                ]
               })
           }
         );
@@ -1220,19 +1526,15 @@ async function getOtoOrder(
 }
 
 
-// ==================================================
-// استخراج رقم التتبع من الرابط
-// ==================================================
-
-function extractTrackingFromUrl(url) {
+function extractTrackingFromUrl(
+  url
+) {
   try {
-    const value =
-      String(
-        url || ""
-      );
-
     const match =
-      value.match(
+      String(
+        url ||
+        ""
+      ).match(
         /(?:ShipmentNumber|trackingNumber|awb)=([0-9]{8,30})/i
       );
 
@@ -1257,7 +1559,8 @@ async function trackShipment(
 ) {
   const requestedTracking =
     String(
-      trackingNumber || ""
+      trackingNumber ||
+      ""
     ).trim();
 
   if (
@@ -1307,7 +1610,8 @@ async function trackShipment(
 
     if (
       !response.ok ||
-      data?.success === false
+      data?.success ===
+        false
     ) {
       return null;
     }
@@ -1319,63 +1623,68 @@ async function trackShipment(
         ? data.items
         : [];
 
-    if (!items.length) {
+    if (
+      !items.length
+    ) {
       return null;
     }
 
     const normalizedItems =
       items
-        .map(item => ({
-          status:
-            String(
-              item?.otoStatus ||
-              item?.status ||
-              item?.dcStatus ||
-              ""
-            ),
-
-          dcStatus:
-            String(
-              item?.dcStatus ||
-              ""
-            ),
-
-          date:
-            String(
-              item?.dcUpdateDate ||
-              item?.updateDate ||
-              item?.date ||
-              ""
-            ),
-
-          description:
-            redactPII(
+        .map(
+          item => ({
+            status:
               String(
-                item?.dcDescription ||
-                item?.description ||
+                item?.otoStatus ||
+                item?.status ||
+                item?.dcStatus ||
+                ""
+              ),
+
+            dcStatus:
+              String(
+                item?.dcStatus ||
+                ""
+              ),
+
+            date:
+              String(
+                item?.dcUpdateDate ||
+                item?.updateDate ||
+                item?.date ||
+                ""
+              ),
+
+            description:
+              redactPII(
+                String(
+                  item?.dcDescription ||
+                  item?.description ||
+                  ""
+                )
+              ),
+
+            shipmentId:
+              String(
+                item?.shipmentId ||
+                ""
+              ),
+
+            trackingNumber:
+              String(
+                item?.trackingNumber ||
+                item?.dcTrackingNumber ||
+                item?.shipmentId ||
                 ""
               )
-            ),
-
-          shipmentId:
-            String(
-              item?.shipmentId ||
-              ""
-            ),
-
-          trackingNumber:
-            String(
-              item?.trackingNumber ||
-              item?.dcTrackingNumber ||
-              item?.shipmentId ||
-              ""
-            )
-        }))
-        .filter(item =>
-          item.status ||
-          item.dcStatus ||
-          item.description ||
-          item.shipmentId
+          })
+        )
+        .filter(
+          item =>
+            item.status ||
+            item.dcStatus ||
+            item.description ||
+            item.shipmentId
         );
 
     if (
@@ -1394,10 +1703,7 @@ async function trackShipment(
             ).trim()
         )
         .filter(
-          number =>
-            isPossibleTrackingNumber(
-              number
-            )
+          isPossibleTrackingNumber
         );
 
     if (
@@ -1410,7 +1716,10 @@ async function trackShipment(
     }
 
     normalizedItems.sort(
-      (a, b) => {
+      (
+        a,
+        b
+      ) => {
         const da =
           new Date(
             a.date
@@ -1422,19 +1731,28 @@ async function trackShipment(
           ).getTime();
 
         if (
-          Number.isNaN(da) ||
-          Number.isNaN(db)
+          Number.isNaN(
+            da
+          ) ||
+          Number.isNaN(
+            db
+          )
         ) {
           return 0;
         }
 
-        return db - da;
+        return (
+          db -
+          da
+        );
       }
     );
 
     const nestedHistory =
-      normalizeHistory(data)
-        .map(item => ({
+      normalizeHistory(
+        data
+      ).map(
+        item => ({
           status:
             String(
               item?.status ||
@@ -1466,7 +1784,8 @@ async function trackShipment(
 
           trackingNumber:
             requestedTracking
-        }));
+        })
+      );
 
     const carrierHistory =
       mergeHistories(
@@ -1474,6 +1793,7 @@ async function trackShipment(
           ...normalizedItems,
           ...nestedHistory
         ],
+
         []
       );
 
@@ -1522,11 +1842,15 @@ async function trackShipment(
 
 
 // ==================================================
-// سجل OTO
+// سجل الشحن
 // ==================================================
 
-function buildCarrierHistory(oto) {
-  if (!oto) {
+function buildCarrierHistory(
+  oto
+) {
+  if (
+    !oto
+  ) {
     return [];
   }
 
@@ -1534,7 +1858,9 @@ function buildCarrierHistory(oto) {
     Array.isArray(
       oto.history
     )
-      ? [...oto.history]
+      ? [
+          ...oto.history
+        ]
       : [];
 
   if (
@@ -1561,8 +1887,8 @@ function buildCarrierHistory(oto) {
     });
   }
 
-  return events
-    .filter(item => {
+  return events.filter(
+    item => {
       const combined =
         `${item?.status || ""} ${item?.dcStatus || ""} ${item?.description || ""}`;
 
@@ -1577,45 +1903,60 @@ function buildCarrierHistory(oto) {
       return isCarrierEvent(
         combined
       );
-    });
+    }
+  );
 }
 
-
-// ==================================================
-// دمج السجلين
-// ==================================================
 
 function mergeHistories(
   shipmentHistory,
   otoHistory
 ) {
   const combined = [
-    ...(Array.isArray(shipmentHistory)
-      ? shipmentHistory
-      : []),
+    ...(
+      Array.isArray(
+        shipmentHistory
+      )
+        ? shipmentHistory
+        : []
+    ),
 
-    ...(Array.isArray(otoHistory)
-      ? otoHistory
-      : [])
+    ...(
+      Array.isArray(
+        otoHistory
+      )
+        ? otoHistory
+        : []
+    )
   ];
 
-  combined.sort((a, b) => {
-    const da = new Date(
-      a?.date ||
-      a?.dcUpdateDate ||
-      a?.updateDate ||
-      0
-    ).getTime();
+  combined.sort(
+    (
+      a,
+      b
+    ) => {
+      const da =
+        new Date(
+          a?.date ||
+          a?.dcUpdateDate ||
+          a?.updateDate ||
+          0
+        ).getTime();
 
-    const db = new Date(
-      b?.date ||
-      b?.dcUpdateDate ||
-      b?.updateDate ||
-      0
-    ).getTime();
+      const db =
+        new Date(
+          b?.date ||
+          b?.dcUpdateDate ||
+          b?.updateDate ||
+          0
+        ).getTime();
 
-    return db - da;
-  });
+      return (
+        db -
+        da
+      );
+    }
+  );
 
   const seen =
     new Set();
@@ -1627,7 +1968,9 @@ function mergeHistories(
     const item
     of combined
   ) {
-    if (!item) {
+    if (
+      !item
+    ) {
       continue;
     }
 
@@ -1689,12 +2032,16 @@ function mergeHistories(
       );
 
     const dcStatus =
-      /^sh\d+$/i.test(rawDcStatus)
+      /^sh\d+$/i.test(
+        rawDcStatus
+      )
         ? ""
         : rawDcStatus;
 
     const descriptionKey =
-      normalize(description);
+      normalize(
+        description
+      );
 
     const key =
       descriptionKey
@@ -1702,12 +2049,16 @@ function mergeHistories(
         : `status:${normalize(status)}`;
 
     if (
-      seen.has(key)
+      seen.has(
+        key
+      )
     ) {
       continue;
     }
 
-    seen.add(key);
+    seen.add(
+      key
+    );
 
     result.push({
       status,
@@ -1745,7 +2096,7 @@ function mergeHistories(
 
 
 // ==================================================
-// ترجمة حالات أرامكس
+// ترجمة أرامكس
 // ==================================================
 
 function friendlyAramexStatus(
@@ -1759,97 +2110,124 @@ function friendlyAramexStatus(
     );
 
   if (
-    /on hold|attempting to contact|cannot be reached|mobile cannot be reached/.test(text)
+    /on hold|attempting to contact|cannot be reached|mobile cannot be reached/.test(
+      text
+    )
   ) {
     return "تعذر التواصل مع العميل";
   }
 
   if (
-    /delivery scheduled/.test(text)
+    /delivery scheduled/.test(
+      text
+    )
   ) {
     return "تم تحديد موعد للتسليم";
   }
 
   if (
-    /sms sent to consignee/.test(text)
+    /sms sent to consignee/.test(
+      text
+    )
   ) {
     return "تم إشعار المستلم";
   }
 
   if (
-    /record created/.test(text)
+    /record created/.test(
+      text
+    )
   ) {
     return "تم إنشاء الشحنة";
   }
 
   if (
-    /received at origin facility/.test(text)
+    /received at origin facility/.test(
+      text
+    )
   ) {
     return "تم استلام الشحنة في مركز الانطلاق";
   }
 
   if (
-    /out for delivery|out.?for.?delivery|with courier/.test(text)
+    /out for delivery|out.?for.?delivery|with courier/.test(
+      text
+    )
   ) {
     return "خرجت الشحنة للتسليم";
   }
 
   if (
-    /under processing at operations facility|processing at operations facility/.test(text)
+    /under processing at operations facility|processing at operations facility/.test(
+      text
+    )
   ) {
     return "الشحنة قيد المعالجة لدى أرامكس";
   }
 
   if (
-    /departed operations facility/.test(text) ||
-    (/departed/.test(text) && /in transit/.test(text))
+    /departed operations facility/.test(
+      text
+    ) ||
+    (
+      /departed/.test(
+        text
+      ) &&
+      /in transit/.test(
+        text
+      )
+    )
   ) {
     return "الشحنة في الطريق";
   }
 
   if (
-    /arrived destination terminal|arrived.?terminal|arrived.?hub|arrived.?facility/.test(text)
+    /arrived destination terminal|arrived.?terminal|arrived.?hub|arrived.?facility/.test(
+      text
+    )
   ) {
     return "وصلت إلى محطة شركة الشحن";
   }
 
   if (
-    /departed.?terminal|departed.?hub|departed.?facility/.test(text)
+    /departed.?terminal|departed.?hub|departed.?facility/.test(
+      text
+    )
   ) {
     return "غادرت محطة شركة الشحن";
   }
 
   if (
-    isConfirmedDeliveredText(text)
+    isConfirmedDeliveredText(
+      text
+    )
   ) {
     return "تم تسليم الشحنة";
   }
 
+  const rawStatus =
+    String(
+      status ||
+      ""
+    ).trim();
+
   if (
     /^sh\d+$/i.test(
-      String(status || "").trim()
+      rawStatus
+    ) ||
+    /[a-z]/i.test(
+      rawStatus
     )
   ) {
     return "تحديث من شركة الشحن";
   }
 
-  const rawStatus =
-    String(status || "").trim();
-
-  if (
-    /[a-z]/i.test(rawStatus)
-  ) {
-    return "تحديث من شركة الشحن";
-  }
-
-  return rawStatus ||
-    "تحديث من شركة الشحن";
+  return (
+    rawStatus ||
+    "تحديث من شركة الشحن"
+  );
 }
 
-
-// ==================================================
-// ترجمة وصف أرامكس
-// ==================================================
 
 function friendlyAramexDescription(
   status,
@@ -1858,7 +2236,8 @@ function friendlyAramexDescription(
 ) {
   const raw =
     String(
-      description || ""
+      description ||
+      ""
     ).trim();
 
   const text =
@@ -1867,229 +2246,259 @@ function friendlyAramexDescription(
     );
 
   if (
-    /on hold|attempting to contact|mobile cannot be reached|cannot be reached|customer not reachable/.test(text)
+    /on hold|attempting to contact|mobile cannot be reached|cannot be reached|customer not reachable/.test(
+      text
+    )
   ) {
     return "تعذر التواصل مع العميل، والشحنة معلقة مؤقتًا";
   }
 
   if (
-    /under processing at operations facility|processing at operations facility/.test(text)
+    /under processing at operations facility|processing at operations facility/.test(
+      text
+    )
   ) {
     return "الشحنة قيد المعالجة في مركز عمليات أرامكس";
   }
 
   if (
-    /departed operations facility/.test(text) ||
-    (/departed/.test(text) && /in transit/.test(text))
+    /departed operations facility/.test(
+      text
+    ) ||
+    (
+      /departed/.test(
+        text
+      ) &&
+      /in transit/.test(
+        text
+      )
+    )
   ) {
     return "غادرت الشحنة مركز العمليات وهي في الطريق";
   }
 
   if (
-    /delivery scheduled/.test(text)
+    /delivery scheduled/.test(
+      text
+    )
   ) {
     return "تم تحديد موعد لتسليم الشحنة";
   }
 
   if (
-    /sms sent to consignee/.test(text)
+    /sms sent to consignee/.test(
+      text
+    )
   ) {
     return "تم إرسال رسالة نصية إلى المستلم";
   }
 
   if (
-    /received at origin facility/.test(text)
+    /received at origin facility/.test(
+      text
+    )
   ) {
     return "تم استلام الشحنة في مركز الانطلاق";
   }
 
   if (
-    /record created/.test(text)
+    /record created/.test(
+      text
+    )
   ) {
     return "تم إنشاء سجل الشحنة لدى شركة الشحن";
   }
 
   if (
-    /out for delivery|with courier/.test(text)
+    /out for delivery|with courier/.test(
+      text
+    )
   ) {
     return "الشحنة مع المندوب وفي طريقها للتسليم";
   }
 
   if (
-    /arrived at destination|arrived destination|received at destination facility/.test(text)
+    /arrived at destination|arrived destination|received at destination facility/.test(
+      text
+    )
   ) {
     return "وصلت الشحنة إلى مركز شركة الشحن في مدينة الوجهة";
   }
 
   if (
-    /picked up|shipment picked up|received by carrier|carrier received|accepted by carrier/.test(text)
+    /picked up|shipment picked up|received by carrier|carrier received|accepted by carrier/.test(
+      text
+    )
   ) {
     return "تم استلام الشحنة من المرسل";
   }
 
   if (
-    isConfirmedDeliveredText(text)
+    isConfirmedDeliveredText(
+      text
+    )
   ) {
     return "تم تسليم الشحنة بنجاح";
   }
 
   if (
-    /in transit/.test(text)
+    /in transit/.test(
+      text
+    )
   ) {
     return "الشحنة في الطريق إلى وجهتها";
   }
 
-  if (
-    /[a-z]/i.test(raw)
-  ) {
-    return "";
-  }
-
-  return raw;
+  return "";
 }
 
 
 // ==================================================
-// تاريخ الحدث
-// ==================================================
-
-function normalizeDateKey(value) {
-  const date =
-    new Date(
-      value
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(
-      value || ""
-    );
-  }
-
-  date.setSeconds(
-    0,
-    0
-  );
-
-  return date.toISOString();
-}
-
-
-// ==================================================
-// حالات الشحن
+// فلترة أحداث الشحن
 // ==================================================
 
 function isCarrierEvent(value) {
   const s =
-    normalize(value);
+    normalize(
+      value
+    );
 
   return (
-    /picked.?up/.test(s) ||
-    /pickup/.test(s) ||
-    /collected/.test(s) ||
+    /picked.?up|pickup|collected/.test(
+      s
+    ) ||
 
-    /received.?by.?carrier/.test(s) ||
-    /carrier.?received/.test(s) ||
-    /accepted.?by.?carrier/.test(s) ||
+    /received.?by.?carrier|carrier.?received|accepted.?by.?carrier/.test(
+      s
+    ) ||
 
-    /arrived.?terminal/.test(s) ||
-    /departed.?terminal/.test(s) ||
+    /arrived.?terminal|departed.?terminal/.test(
+      s
+    ) ||
 
-    /arrived.?destination.?terminal/.test(s) ||
-    /departed.?destination.?terminal/.test(s) ||
+    /arrived.?destination.?terminal|departed.?destination.?terminal/.test(
+      s
+    ) ||
 
-    /arrived.?origin.?terminal/.test(s) ||
-    /departed.?origin.?terminal/.test(s) ||
+    /arrived.?origin.?terminal|departed.?origin.?terminal/.test(
+      s
+    ) ||
 
-    /arrived.?hub/.test(s) ||
-    /departed.?hub/.test(s) ||
+    /arrived.?hub|departed.?hub/.test(
+      s
+    ) ||
 
-    /arrived.?facility/.test(s) ||
-    /departed.?facility/.test(s) ||
+    /arrived.?facility|departed.?facility/.test(
+      s
+    ) ||
 
-    /under processing at operations facility/.test(s) ||
+    /under processing at operations facility/.test(
+      s
+    ) ||
 
-    /in.?transit/.test(s) ||
-    /\btransit\b/.test(s) ||
-    /departed/.test(s) ||
-    /moving/.test(s) ||
-    /forwarded/.test(s) ||
+    /in.?transit|\btransit\b|departed|moving|forwarded/.test(
+      s
+    ) ||
 
-    /with.?courier/.test(s) ||
-    /out.?for.?delivery/.test(s) ||
+    /with.?courier|out.?for.?delivery/.test(
+      s
+    ) ||
 
-    /delivery scheduled/.test(s) ||
+    /delivery scheduled/.test(
+      s
+    ) ||
 
-    /sms sent to consignee/.test(s) ||
+    /sms sent to consignee/.test(
+      s
+    ) ||
 
-    /record created/.test(s) ||
+    /record created/.test(
+      s
+    ) ||
 
-    /delivery.?attempt/.test(s) ||
-    /attempted.?delivery/.test(s) ||
+    /delivery.?attempt|attempted.?delivery/.test(
+      s
+    ) ||
 
-    /delivered/.test(s) ||
+    /delivered/.test(
+      s
+    ) ||
 
-    /returned/.test(s) ||
-    /return.?to.?sender/.test(s) ||
+    /returned|return.?to.?sender/.test(
+      s
+    ) ||
 
-    /delivery.?exception/.test(s) ||
-    /undeliverable/.test(s) ||
-    /on.?hold/.test(s) ||
+    /delivery.?exception|undeliverable|on.?hold/.test(
+      s
+    ) ||
 
-    /استلمت.*شركه.*الشحن/.test(s) ||
-    /استلام.*شركه.*الشحن/.test(s) ||
-    /استلم.*الناقل/.test(s) ||
-    /تم.*استلام.*الشحنه/.test(s) ||
+    /استلمت.*شركه.*الشحن/.test(
+      s
+    ) ||
 
-    /وصلت.*محطه/.test(s) ||
-    /وصلت.*الفرع/.test(s) ||
-    /وصلت.*مركز/.test(s) ||
+    /استلام.*شركه.*الشحن/.test(
+      s
+    ) ||
 
-    /غادرت.*المحطه/.test(s) ||
-    /غادرت.*الفرع/.test(s) ||
-    /غادرت.*المركز/.test(s) ||
+    /استلم.*الناقل/.test(
+      s
+    ) ||
 
-    /في.*الطريق/.test(s) ||
-    /جاري.*التوصيل/.test(s) ||
-    /خرجت.*للتسليم/.test(s) ||
+    /تم.*استلام.*الشحنه/.test(
+      s
+    ) ||
 
-    /محاوله.*تسليم/.test(s) ||
-    /تم.*التسليم/.test(s)
+    /وصلت.*محطه|وصلت.*الفرع|وصلت.*مركز/.test(
+      s
+    ) ||
+
+    /غادرت.*المحطه|غادرت.*الفرع|غادرت.*المركز/.test(
+      s
+    ) ||
+
+    /في.*الطريق|جاري.*التوصيل|خرجت.*للتسليم/.test(
+      s
+    ) ||
+
+    /محاوله.*تسليم|تم.*التسليم/.test(
+      s
+    )
   );
 }
 
 
-// ==================================================
-// تحديثات OTO الإدارية
-// ==================================================
-
-function isInternalOtoEvent(value) {
+function isInternalOtoEvent(
+  value
+) {
   const s =
-    normalize(value);
+    normalize(
+      value
+    );
 
   return (
-    /تم تحديث/.test(s) ||
-    /تم تعديل/.test(s) ||
+    /تم تحديث|تم تعديل/.test(
+      s
+    ) ||
 
-    /موقع الارسال/.test(s) ||
-    /العنوان/.test(s) ||
-    /المرسل/.test(s) ||
+    /موقع الارسال|العنوان|المرسل/.test(
+      s
+    ) ||
 
-    /sender/.test(s) ||
-    /address/.test(s) ||
+    /sender|address/.test(
+      s
+    ) ||
 
-    /location updated/.test(s) ||
-    /edited/.test(s) ||
-    /changed/.test(s) ||
+    /location updated|edited|changed/.test(
+      s
+    ) ||
 
-    /order created/.test(s) ||
+    /order created/.test(
+      s
+    ) ||
 
-    /warehouse/.test(s) ||
-    /packing/.test(s) ||
-    /preparing/.test(s)
+    /warehouse|packing|preparing/.test(
+      s
+    )
   );
 }
 
@@ -2098,22 +2507,33 @@ function isInternalOtoEvent(value) {
 // شركات الشحن
 // ==================================================
 
-function isSaeedi(company) {
+function isSaeedi(
+  company
+) {
   return /الصاعدي|alsaedi|al saeedi|al-saeedi|saeedi/.test(
-    normalize(company)
+    normalize(
+      company
+    )
   );
 }
 
 
-function cleanSallaCarrier(company) {
+function cleanSallaCarrier(
+  company
+) {
   const c =
     String(
-      company || ""
+      company ||
+      ""
     ).trim();
 
   if (
-    /^oto$/i.test(c) ||
-    /بوابه الشحن|بوابة الشحن/i.test(c)
+    /^oto$/i.test(
+      c
+    ) ||
+    /بوابه الشحن|بوابة الشحن/i.test(
+      c
+    )
   ) {
     return "";
   }
@@ -2122,33 +2542,46 @@ function cleanSallaCarrier(company) {
 }
 
 
-function normalizeCarrierName(company) {
+function normalizeCarrierName(
+  company
+) {
   const c =
     String(
-      company || ""
+      company ||
+      ""
     ).trim();
 
-  if (!c) {
+  if (
+    !c
+  ) {
     return "";
   }
 
   const n =
-    normalize(c);
+    normalize(
+      c
+    );
 
   if (
-    /aramex|ارامكس/.test(n)
+    /aramex|ارامكس/.test(
+      n
+    )
   ) {
     return "Aramex";
   }
 
   if (
-    isSaeedi(c)
+    isSaeedi(
+      c
+    )
   ) {
     return "الصاعدي";
   }
 
   if (
-    /^oto$|بوابه الشحن/.test(n)
+    /^oto$|بوابه الشحن/.test(
+      n
+    )
   ) {
     return "";
   }
@@ -2157,12 +2590,18 @@ function normalizeCarrierName(company) {
 }
 
 
-function carrierCodeFromName(company) {
+function carrierCodeFromName(
+  company
+) {
   const n =
-    normalize(company);
+    normalize(
+      company
+    );
 
   if (
-    /aramex|ارامكس/.test(n)
+    /aramex|ارامكس/.test(
+      n
+    )
   ) {
     return "aramex";
   }
@@ -2172,12 +2611,15 @@ function carrierCodeFromName(company) {
 
 
 // ==================================================
-// أدوات مساعدة
+// أدوات عامة
 // ==================================================
 
-function normalizeId(value) {
+function normalizeId(
+  value
+) {
   return String(
-    value || ""
+    value ||
+    ""
   )
     .trim()
     .replace(
@@ -2187,9 +2629,12 @@ function normalizeId(value) {
 }
 
 
-async function safeJson(response) {
+async function safeJson(
+  response
+) {
   try {
     return await response.json();
+
   } catch {
     return {};
   }
@@ -2266,7 +2711,8 @@ function findField(
         );
 
       if (
-        found !== undefined
+        found !==
+        undefined
       ) {
         return found;
       }
@@ -2288,9 +2734,12 @@ function findNumericField(
     );
 
   if (
-    value === undefined ||
-    value === null ||
-    value === ""
+    value ===
+      undefined ||
+    value ===
+      null ||
+    value ===
+      ""
   ) {
     return null;
   }
@@ -2308,11 +2757,9 @@ function findNumericField(
 }
 
 
-// ==================================================
-// سجل OTO
-// ==================================================
-
-function normalizeHistory(raw) {
+function normalizeHistory(
+  raw
+) {
   const arrays =
     [];
 
@@ -2324,98 +2771,106 @@ function normalizeHistory(raw) {
   const list =
     arrays
       .sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           b.length -
           a.length
-      )[0] || [];
+      )[0] ||
+    [];
 
   return list
-    .map(item => {
-      if (
-        !item ||
-        typeof item !==
-          "object"
-      ) {
-        return null;
-      }
+    .map(
+      item => {
+        if (
+          !item ||
+          typeof item !==
+            "object"
+        ) {
+          return null;
+        }
 
-      const status =
-        pick(
-          item,
-          [
-            "status",
-            "orderStatus",
-            "dcStatus",
-            "state",
-            "action",
-            "otoStatus"
-          ]
-        );
-
-      const dcStatus =
-        pick(
-          item,
-          [
-            "dcStatus"
-          ]
-        );
-
-      const date =
-        pick(
-          item,
-          [
-            "date",
-            "timestamp",
-            "createdAt",
-            "updatedAt",
-            "updateDate",
-            "dcUpdateDate"
-          ]
-        );
-
-      const description =
-        redactPII(
+        const status =
           pick(
             item,
             [
-              "description",
-              "note",
-              "dcDescription",
-              "message"
+              "status",
+              "orderStatus",
+              "dcStatus",
+              "state",
+              "action",
+              "otoStatus"
             ]
-          )
-        );
+          );
 
-      if (
-        !status &&
-        !description
-      ) {
-        return null;
+        const dcStatus =
+          pick(
+            item,
+            [
+              "dcStatus"
+            ]
+          );
+
+        const date =
+          pick(
+            item,
+            [
+              "date",
+              "timestamp",
+              "createdAt",
+              "updatedAt",
+              "updateDate",
+              "dcUpdateDate"
+            ]
+          );
+
+        const description =
+          redactPII(
+            pick(
+              item,
+              [
+                "description",
+                "note",
+                "dcDescription",
+                "message"
+              ]
+            )
+          );
+
+        if (
+          !status &&
+          !description
+        ) {
+          return null;
+        }
+
+        return {
+          status:
+            String(
+              status ||
+              ""
+            ),
+
+          dcStatus:
+            String(
+              dcStatus ||
+              ""
+            ),
+
+          date:
+            String(
+              date ||
+              ""
+            ),
+
+          description
+        };
       }
-
-      return {
-        status:
-          String(
-            status ||
-            ""
-          ),
-
-        dcStatus:
-          String(
-            dcStatus ||
-            ""
-          ),
-
-        date:
-          String(
-            date ||
-            ""
-          ),
-
-        description
-      };
-    })
-    .filter(Boolean)
+    )
+    .filter(
+      Boolean
+    )
     .slice(
       0,
       60
@@ -2427,7 +2882,9 @@ function collectArrays(
   value,
   arrays
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return;
   }
 
@@ -2502,11 +2959,9 @@ function pick(
 }
 
 
-// ==================================================
-// حماية البيانات
-// ==================================================
-
-function redactPII(value) {
+function redactPII(
+  value
+) {
   let text =
     String(
       value ||
@@ -2521,9 +2976,24 @@ function redactPII(value) {
 
   text =
     text.replace(
-      /\b\d{9,12}\b/g,
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
       ""
     );
 
-  return text.trim();
+  text =
+    text.replace(
+      /\b\d{9,16}\b/g,
+      ""
+    );
+
+  return text
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim()
+    .slice(
+      0,
+      220
+    );
 }
